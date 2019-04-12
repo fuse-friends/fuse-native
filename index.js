@@ -1,8 +1,10 @@
-var fuse = require('node-gyp-build')(__dirname)
 var fs = require('fs')
 var os = require('os')
 var xtend = require('xtend')
 var path = require('path')
+
+var fuse = require('node-gyp-build')(__dirname)
+var { beforeMount, beforeUnmount, configure, unconfigure } = require('fuse-shared-library')
 
 var noop = function () {}
 var call = function (cb) { cb() }
@@ -69,8 +71,12 @@ exports.mount = function (mnt, ops, opts, cb) {
   }
 
   var mount = function () {
-    // TODO: I got a feeling this can be done better
-    if (os.platform() !== 'win32') {
+    if (beforeMount) beforeMount(domount)
+    else domount(null)
+
+    function domount (err) {
+      if (err) return cb(err)
+      // TODO: I got a feeling this can be done better
       fs.stat(mnt, function (err, stat) {
         if (err) return cb(new Error('Mountpoint does not exist'))
         if (!stat.isDirectory()) return cb(new Error('Mountpoint is not a directory'))
@@ -79,8 +85,6 @@ exports.mount = function (mnt, ops, opts, cb) {
           fuse.mount(mnt, ops)
         })
       })
-    } else {
-      fuse.mount(mnt, ops)
     }
   }
 
@@ -89,7 +93,21 @@ exports.mount = function (mnt, ops, opts, cb) {
 }
 
 exports.unmount = function (mnt, cb) {
-  fuse.unmount(path.resolve(mnt), cb)
+  if (beforeUnmount) beforeUnmount(unmount)
+  else unmount(null)
+
+  function unmount (err) {
+    if (err) return cb(err)
+    fuse.unmount(path.resolve(mnt), cb)
+  }
+}
+
+exports.configure = function (cb) {
+  return configure(cb)
+}
+
+exports.unconfigure = function (cb) {
+  return unconfigure(cb)
 }
 
 exports.errno = function (code) {
