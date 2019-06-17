@@ -4,7 +4,7 @@ var xtend = require('xtend')
 var path = require('path')
 
 var fuse = require('node-gyp-build')(__dirname)
-var { beforeMount, beforeUnmount, configure, unconfigure } = require('fuse-shared-library')
+var { beforeMount, beforeUnmount, configure, unconfigure, isConfigured } = require('fuse-shared-library')
 
 var noop = function () {}
 var call = function (cb) { cb() }
@@ -24,6 +24,8 @@ fuse.setBuffer(FuseBuffer)
 fuse.setCallback(function (index, callback) {
   return callback.bind(null, index)
 })
+
+exports.isConfigured = isConfigured
 
 exports.context = function () {
   var ctx = {}
