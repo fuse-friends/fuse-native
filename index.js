@@ -13,6 +13,8 @@ var IS_OSX = os.platform() === 'darwin'
 var OSX_FOLDER_ICON = '/System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/GenericFolderIcon.icns'
 var HAS_FOLDER_ICON = IS_OSX && fs.existsSync(OSX_FOLDER_ICON)
 
+const TIMED_OUT = Symbol('TIMED_OUT')
+
 var FuseBuffer = function () {
   this.length = 0
   this.parent = undefined
@@ -36,10 +38,15 @@ exports.context = function () {
 exports.mount = function (mnt, ops, opts, cb) {
   if (typeof opts === 'function') return exports.mount(mnt, ops, null, opts)
   if (!cb) cb = noop
+  var destroyed = false
 
   ops = xtend(ops, opts) // clone
   if (/\*|(^,)fuse-bindings(,$)/.test(process.env.DEBUG)) ops.options = ['debug'].concat(ops.options || [])
   mnt = path.resolve(mnt)
+
+  if (opts && (opts.safe || opts.timeout)) {
+    var stopTimeouts = wrapSafe(ops, opts.timeout || 3000)
+  }
 
   if (ops.displayFolder && IS_OSX) { // only works on osx
     if (!ops.options) ops.options = []
@@ -49,7 +56,7 @@ exports.mount = function (mnt, ops, opts, cb) {
 
   var callback = function (err) {
     callback = noop
-    setImmediate(cb.bind(null, err))
+    setImmediate(cb.bind(null, err, destroy))
   }
 
   var init = ops.init || call
@@ -92,6 +99,15 @@ exports.mount = function (mnt, ops, opts, cb) {
 
   if (!ops.force) return mount()
   exports.unmount(mnt, mount)
+
+  function destroy (cb) {
+    if (destroyed) return null
+    destroyed = true
+    if (stopTimeouts) stopTimeouts()
+    return exports.unmount(mnt, err => {
+      return cb(err)
+    })
+  }
 }
 
 exports.unmount = function (mnt, cb) {
@@ -114,6 +130,74 @@ exports.unconfigure = function (cb) {
 
 exports.errno = function (code) {
   return (code && exports[code.toUpperCase()]) || -1
+}
+
+function wrapSafe (ops, timeout) {
+  const pending = []
+  var timeoutChecker = setInterval(checkTimeouts, timeout / 4)
+  var destroyed = false
+
+  const wrapped = {}
+  for (const name of Object.keys(ops)) {
+    const op = ops[name]
+
+    if (typeof op !== 'function') {
+      wrapped[name] = op
+      continue
+    }
+    wrapped[name] = wrapOp(op)
+  }
+
+  Object.assign(ops, wrapped)
+  return destroy
+
+  function wrapOp (op) {
+    return function () {
+      const cb = arguments[arguments.length - 1]
+      var called = false
+
+      const idx = pending.indexOf(null)
+
+      const cbInfo =  { cb, tick: 0 }
+      pending[idx === -1 ? pending.length : idx] = cbInfo
+
+      try {
+        op.apply(null, [...Array.prototype.slice.call(arguments, 0, -1), safeCb])
+      } catch (err) {
+        if (!cb[TIMED_OUT] && !called) return cb(exports.EIO)
+      }
+
+      function safeCb () {
+        called = true
+        pending[pending.indexOf(cbInfo)] = null
+        if (!cb[TIMED_OUT]) cb.apply(null, arguments)
+        cb[TIMED_OUT] = false
+      }
+    }
+  }
+
+  function checkTimeouts () {
+    for (const cbInfo of pending) {
+      if (!cbInfo) continue
+      if (++cbInfo.tick >= 4) {
+        killCallback(cbInfo)
+      }
+    }
+  }
+
+  function killCallback (cbInfo) {
+    cbInfo.cb(exports.EIO)
+    cbInfo.cb[TIMED_OUT] = true
+    pending[pending.indexOf(cbInfo)] = null
+  }
+
+  function destroy () {
+    clearInterval(timeoutChecker)
+    for (const cbInfo of [...pending]) {
+      if (cbInfo) killCallback(cbInfo)
+    }
+    destroyed = true
+  }
 }
 
 exports.EPERM = -1
