@@ -16,9 +16,9 @@ tape('readlink', function (t) {
       cb(0, 'hello')
     },
     getattr: function (path, cb) {
-      if (path === '/') return cb(null, stat({mode: 'dir', size: 4096}))
-      if (path === '/hello') return cb(null, stat({mode: 'file', size: 11}))
-      if (path === '/link') return cb(null, stat({mode: 'link', size: 5}))
+      if (path === '/') return cb(null, stat({ mode: 'dir', size: 4096 }))
+      if (path === '/hello') return cb(null, stat({ mode: 'file', size: 11 }))
+      if (path === '/link') return cb(null, stat({ mode: 'link', size: 5 }))
       return cb(fuse.ENOENT)
     },
     open: function (path, flags, cb) {

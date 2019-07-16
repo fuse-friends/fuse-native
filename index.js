@@ -75,7 +75,7 @@ exports.mount = function (mnt, ops, opts, cb) {
   if (!ops.getattr) { // we need this for unmount to work on osx
     ops.getattr = function (path, cb) {
       if (path !== '/') return cb(fuse.EPERM)
-      cb(null, {mtime: new Date(0), atime: new Date(0), ctime: new Date(0), mode: 16877, size: 4096})
+      cb(null, { mtime: new Date(0), atime: new Date(0), ctime: new Date(0), mode: 16877, size: 4096 })
     }
   }
 
@@ -156,13 +156,18 @@ function wrapSafe (ops, timeout) {
       const cb = arguments[arguments.length - 1]
       var called = false
 
+      if (destroyed) {
+        if (!called) return cb(exports.EIO)
+        return
+      }
+
       const idx = pending.indexOf(null)
 
-      const cbInfo =  { cb, tick: 0 }
+      const cbInfo = { cb, tick: 0 }
       pending[idx === -1 ? pending.length : idx] = cbInfo
 
       try {
-        op.apply(null, [...Array.prototype.slice.call(arguments, 0, -1), safeCb])
+        op(...[...Array.prototype.slice.call(arguments, 0, -1), safeCb])
       } catch (err) {
         if (!cb[TIMED_OUT] && !called) return cb(exports.EIO)
       }
