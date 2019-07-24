@@ -1,0 +1,28 @@
+{
+  "name": "fuse-native",
+  "version": "0.0.0",
+  "description": "Fully maintained fuse bindings for Node that aims to cover the entire FUSE api",
+  "main": "index.js",
+  "scripts": {
+    "install": "node-gyp-build",
+    "prebuild": "prebuildify -a --strip",
+    "prebuild-ia32": "prebuildify -a --strip --arch=ia32"
+  },
+  "gypfile": true,
+  "dependencies": {
+    "fuse-shared-library": "^1.0.1",
+    "napi-macros": "^2.0.0",
+    "node-gyp-build": "^3.2.2"
+  },
+  "devDependencies": {},
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/fuse-friends/fuse-native.git"
+  },
+  "author": "Mathias Buus (@mafintosh)",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/fuse-friends/fuse-native/issues"
+  },
+  "homepage": "https://github.com/fuse-friends/fuse-native"
+}
