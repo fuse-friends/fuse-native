@@ -4,42 +4,29 @@ console.log(binding)
 
 class Fuse {
   constructor () {
-    this.fuseThread = Buffer.alloc(binding.sizeof_fuse_thread_t)
+    this._thread = Buffer.alloc(binding.sizeof_fuse_thread_t)
   }
 
   mount (mnt) {
-    binding.fuse_native_mount('mnt', '-odebug', data, this, on_op)
+    binding.fuse_native_mount(mnt, '-odebug', this._thread, this, this.onop)
+  }
+
+  onop (handle) {
+    console.log('on_op is called', handle)
+    process.nextTick(function () {
+      binding.fuse_native_signal(handle)
+    })
   }
 }
 
-const ctx = {}
-const data = Buffer.alloc(binding.sizeof_fuse_thread_t)
-let buffers = []
-let foo
+const f = new Fuse()
 
-binding.fuse_native_mount('mnt', '-odebug', data, ctx, on_op)
-
-let to = 1
-
-setTimeout(function () {
-  to = 5000
-}, 5000)
+f.mount('mnt')
 
 setInterval(() => {
-  console.log(!!(data && buffers && ctx && on_op))
-  gc()
+  console.log(!!(f))
+  if (global.gc) gc()
 }, 1000)
-
-function on_op (buf) {
-  // foo = buf
-  console.log('on_op is called', buf)
-  // buffers.push(buf)
-
-  setTimeout(function () {
-    console.log('in timeout')
-    binding.fuse_native_signal(buf)
-  }, to)
-}
 
 // setTimeout(function () {
 //   foo = null
