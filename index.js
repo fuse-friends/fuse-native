@@ -12,9 +12,14 @@ class Fuse {
   }
 
   onop (handle) {
-    console.log('on_op is called', handle)
+    const ints = new Uint32Array(handle.buffer, handle.byteOffset, 32)
+
+    ints[0] = 1
+    ints[1] = 42
+    ints[2] = 10
+
     process.nextTick(function () {
-      binding.fuse_native_signal(handle)
+      binding.fuse_native_signal(handle, -1)
     })
   }
 }

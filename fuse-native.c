@@ -28,7 +28,8 @@ typedef struct {
 } fuse_thread_t;
 
 typedef struct {
-  int hello;
+  uint32_t ints[32];
+  int32_t res;
   fuse_thread_t *fuse;
   fuse_native_semaphore_t sem;
   uv_async_t async;
@@ -38,18 +39,6 @@ typedef struct {
 } fuse_thread_locals_t;
 
 static pthread_key_t thread_locals_key;
-
-// static fuse_thread_locals_t * thread_local_map[1024];
-// static int thread_local_map_length = 0;
-
-// static int get_free_thread_id () {
-//   for (int i = 0; i < thread_local_map_length; i++) {
-//     if (thread_local_map[i] == NULL) return i;
-//   }
-
-//   return thread_local_map_length++;
-// }
-
 
 static void fin (napi_env env, void *fin_data, void* fin_hint) {
   printf("finaliser is run\n");
@@ -90,8 +79,6 @@ static fuse_thread_locals_t* get_thread_locals () {
   }
 
   fuse_thread_locals_t* l = (fuse_thread_locals_t *) malloc(sizeof(fuse_thread_locals_t));
-
-  l->hello = 42;
 
   // TODO: mutex me??
   int err = uv_async_init(uv_default_loop(), &(l->async), (uv_async_cb) fuse_native_dispatch);
@@ -138,14 +125,23 @@ static int fuse_native_getattr (const char *path, struct stat *stat) {
   uv_async_send(&(l->async));
   fuse_native_semaphore_wait(&(l->sem));
 
+  printf("l->res: %i\n", l->res);
+  printf("l->ints[0]: %u\n", l->ints[0]);
+  printf("l->ints[1]: %u\n", l->ints[1]);
+  printf("l->ints[2]: %u\n", l->ints[2]);
+
   return -1;
 }
 
 NAPI_METHOD(fuse_native_signal) {
-  NAPI_ARGV(5)
+  NAPI_ARGV(2)
   NAPI_ARGV_BUFFER_CAST(fuse_thread_locals_t *, l, 0);
+  NAPI_ARGV_INT32(res, 1)
 
+  l->res = res;
   fuse_native_semaphore_signal(&(l->sem));
+
+  return NULL;
 }
 
 NAPI_METHOD(fuse_native_mount) {
