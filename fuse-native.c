@@ -17,6 +17,17 @@
 #include <sys/wait.h>
 #include <pthread.h>
 
+#define FUSE_NATIVE_CALLBACK(fn, blk)           \
+  napi_env env = ft->env;                       \
+  napi_handle_scope scope;                      \
+  napi_open_handle_scope(env, &scope);          \
+  napi_value ctx;                               \
+  napi_get_reference_value(env, ft->ctx, &ctx); \
+  napi_value callback;                          \
+  napi_get_reference_value(env, fn, &callback); \
+  blk                                           \
+  napi_close_handle_scope(env, scope);
+
 static const uint32_t op_init = 0;
 static const uint32_t op_error = 1;
 static const uint32_t op_access = 2;
@@ -62,8 +73,8 @@ typedef struct {
   // Operation handlers
   napi_ref on_path_op;
   napi_ref on_stat_op;
-  napi_ref on_statfs_op;
   napi_ref on_buffer_op;
+  napi_ref on_statfs;
   napi_ref on_readdir;
   napi_ref on_symlink;
 
@@ -76,10 +87,18 @@ typedef struct {
   uint32_t op;
 
   // Payloads
+  const char *path;
+  void *buf;
+  int32_t res;
+
+  // Stat + Statfs
   struct stat *stat;
   struct statvfs *statvfs;
-  const char *path;
-  int32_t res;
+
+  // Readdir
+  fuse_fill_dir_t readdir_filler;
+  off_t readdir_offset;
+  struct fuse_file_info *readdir_info;
 
   // Internal bookkeeping
   fuse_thread_t *fuse;
@@ -95,73 +114,53 @@ static void fin (napi_env env, void *fin_data, void* fin_hint) {
   // exit(0);
 }
 
+
 static void fuse_native_dispatch_stat(uv_async_t* handle, int status, fuse_thread_locals_t* l, fuse_thread_t* ft) {
-  napi_env env = ft->env;
-  napi_handle_scope scope;
+  FUSE_NATIVE_CALLBACK(ft->on_stat_op, {
+    napi_value argv[3];
 
-  napi_open_handle_scope(env, &scope);
+    napi_create_external_buffer(env, sizeof(fuse_thread_locals_t), l, &fin, NULL, &(argv[0]));
+    napi_create_uint32(env, l->op, &(argv[1]));
+    napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
 
-  napi_value ctx;
-  napi_get_reference_value(env, ft->ctx, &ctx);
-
-  napi_value callback;
-  napi_get_reference_value(env, ft->on_stat_op, &callback);
-
-  napi_value argv[3];
-
-  napi_create_external_buffer(env, sizeof(fuse_thread_locals_t), l, &fin, NULL, &(argv[0]));
-  napi_create_uint32(env, l->op, &(argv[1]));
-  napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
-
-  NAPI_MAKE_CALLBACK(env, NULL, ctx, callback, 3, argv, NULL)
-
-  napi_close_handle_scope(env, scope);
+    NAPI_MAKE_CALLBACK(env, NULL, ctx, callback, 3, argv, NULL)
+  })
 }
 
 static void fuse_native_dispatch_path(uv_async_t* handle, int status, fuse_thread_locals_t* l, fuse_thread_t* ft) {
-  napi_env env = ft->env;
-  napi_handle_scope scope;
+  FUSE_NATIVE_CALLBACK(ft->on_path_op, {
+    napi_value argv[3];
 
-  napi_open_handle_scope(env, &scope);
+    napi_create_external_buffer(env, sizeof(fuse_thread_locals_t), l, &fin, NULL, &(argv[0]));
+    napi_create_uint32(env, l->op, &(argv[1]));
+    napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
 
-  napi_value ctx;
-  napi_get_reference_value(env, ft->ctx, &ctx);
+    NAPI_MAKE_CALLBACK(env, NULL, ctx, callback, 3, argv, NULL)
+  })
+}
 
-  napi_value callback;
-  napi_get_reference_value(env, ft->on_path_op, &callback);
+static void fuse_native_dispatch_readdir(uv_async_t* handle, int status, fuse_thread_locals_t* l, fuse_thread_t* ft) {
+  FUSE_NATIVE_CALLBACK(ft->on_readdir, {
+      napi_value argv[3];
 
-  napi_value argv[3];
+      napi_create_external_buffer(env, sizeof(fuse_thread_locals_t), l, &fin, NULL, &(argv[0]));
+      napi_create_uint32(env, l->op, &(argv[1]));
+      napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
 
-  napi_create_external_buffer(env, sizeof(fuse_thread_locals_t), l, &fin, NULL, &(argv[0]));
-  napi_create_uint32(env, l->op, &(argv[1]));
-  napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
-
-  NAPI_MAKE_CALLBACK(env, NULL, ctx, callback, 3, argv, NULL)
-
-  napi_close_handle_scope(env, scope);
+      NAPI_MAKE_CALLBACK(env, NULL, ctx, callback, 3, argv, NULL)
+  })
 }
 
 static void fuse_native_dispatch_buffer(uv_async_t* handle, int status, fuse_thread_locals_t* l, fuse_thread_t* ft) {
-  napi_env env = ft->env;
-  napi_handle_scope scope;
+  FUSE_NATIVE_CALLBACK(ft->on_buffer_op, {
+      napi_value argv[3];
 
-  napi_open_handle_scope(env, &scope);
+      napi_create_external_buffer(env, sizeof(fuse_thread_locals_t), l, &fin, NULL, &(argv[0]));
+      napi_create_uint32(env, l->op, &(argv[1]));
+      napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
 
-  napi_value ctx;
-  napi_get_reference_value(env, ft->ctx, &ctx);
-
-  napi_value callback;
-  napi_get_reference_value(env, ft->on_buffer_op, &callback);
-
-  napi_value argv[4];
-
-  napi_create_external_buffer(env, sizeof(fuse_thread_locals_t), l, &fin, NULL, &(argv[0]));
-  napi_create_uint32(env, l->op, &(argv[1]));
-  napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
-
-  NAPI_MAKE_CALLBACK(env, NULL, ctx, callback, 4, argv, NULL)
-
-  napi_close_handle_scope(env, scope);
+      NAPI_MAKE_CALLBACK(env, NULL, ctx, callback, 3, argv, NULL)
+  })
 }
 
 static void fuse_native_dispatch (uv_async_t* handle, int status) {
@@ -171,6 +170,8 @@ static void fuse_native_dispatch (uv_async_t* handle, int status) {
   switch (l->op) {
     case (op_getattr):
       return fuse_native_dispatch_stat(handle, status, l, ft);
+    case (op_readdir):
+      return fuse_native_dispatch_readdir(handle, status, l, ft);
   }
 }
 
@@ -241,7 +242,29 @@ static int fuse_native_statfs (struct statvfs *statvfs) {
   uv_async_send(&(l->async));
   fuse_native_semaphore_wait(&(l->sem));
 
-  return -1;
+  return l->res;
+}
+
+static int fuse_native_readdir (const char *path, void *buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *info) {
+  struct fuse_context *ctx = fuse_get_context();
+  fuse_thread_t *ft = (fuse_thread_t *) ctx->private_data;
+
+  fuse_thread_locals_t *l = get_thread_locals();
+
+  l->fuse = ft;
+  l->buf = buf;
+  l->path = path;
+  l->readdir_filler = filler;
+  l->readdir_offset = offset;
+  l->readdir_info = info;
+  l->op = op_readdir;
+
+  uv_async_send(&(l->async));
+  printf("before semaphore wait\n");
+  fuse_native_semaphore_wait(&(l->sem));
+  printf("after semaphore wait\n");
+
+  return l->res;
 }
 
 NAPI_METHOD(fuse_native_signal_path) {
@@ -255,44 +278,49 @@ NAPI_METHOD(fuse_native_signal_path) {
   return NULL;
 }
 
-static void to_timespec (struct timespec* ts, uint32_t ms) {
+static void to_timespec (struct timespec* ts, uint32_t* int_ptr) {
+  long unsigned int ms = *int_ptr + (*(int_ptr + 1) * 4294967296);
   ts->tv_sec = ms / 1000;
   ts->tv_nsec = (ms % 1000) * 1000000;
 }
 
+static void populate_stat (uint32_t *ints, struct stat* stat) {
+  stat->st_mode = *ints++;
+  stat->st_uid = *ints++;
+  stat->st_gid = *ints++;
+  stat->st_size = *ints++;
+  stat->st_dev = *ints++;
+  stat->st_nlink = *ints++;
+  stat->st_ino = *ints++;
+  stat->st_rdev = *ints++;
+  stat->st_blksize = *ints++;
+  stat->st_blocks = *ints++;
+  to_timespec(&stat->st_atim, ints);
+  to_timespec(&stat->st_mtim, ints + 2);
+  to_timespec(&stat->st_ctim, ints + 4);
+}
+
+static void populate_statvfs (uint32_t *ints, struct statvfs* statvfs) {
+  statvfs->f_bsize =  *ints++;
+  statvfs->f_frsize =  *ints++;
+  statvfs->f_blocks =  *ints++;
+  statvfs->f_bfree =  *ints++;
+  statvfs->f_bavail =  *ints++;
+  statvfs->f_files =  *ints++;
+  statvfs->f_ffree =  *ints++;
+  statvfs->f_favail =  *ints++;
+  statvfs->f_fsid =  *ints++;
+  statvfs->f_flag =  *ints++;
+  statvfs->f_namemax =  *ints++;
+}
+
 NAPI_METHOD(fuse_native_signal_stat) {
-  NAPI_ARGV(15)
+  NAPI_ARGV(4)
   NAPI_ARGV_BUFFER_CAST(fuse_thread_locals_t *, l, 0);
-
   NAPI_ARGV_INT32(res, 1)
-  NAPI_ARGV_INT32(mode, 2)
-  NAPI_ARGV_INT32(uid, 3)
-  NAPI_ARGV_INT32(gid, 4)
-  NAPI_ARGV_INT32(size, 5)
-  NAPI_ARGV_INT32(dev, 6)
-  NAPI_ARGV_INT32(nlink, 7)
-  NAPI_ARGV_INT32(ino, 8)
-  NAPI_ARGV_INT32(rdev, 9)
-  NAPI_ARGV_INT32(blksize, 10)
-  NAPI_ARGV_INT32(blocks, 11)
-  NAPI_ARGV_INT32(atim, 12)
-  NAPI_ARGV_INT32(mtim, 13)
-  NAPI_ARGV_INT32(ctim, 14)
+  NAPI_ARGV_BUFFER_CAST(uint32_t*, ints, 2)
 
-  l->stat->st_mode = mode;
-  l->stat->st_uid = uid;
-  l->stat->st_gid = gid;
-  l->stat->st_size = size;
-  l->stat->st_dev = dev;
-  l->stat->st_nlink = nlink;
-  l->stat->st_ino = ino;
-  l->stat->st_rdev = rdev;
-  l->stat->st_blksize = blksize;
-  l->stat->st_blocks = blocks;
-  to_timespec(&l->stat->st_atim, atim);
-  to_timespec(&l->stat->st_mtim, mtim);
-  to_timespec(&l->stat->st_ctim, ctim);
-
+  populate_stat(ints, l->stat);
   l->res = res;
   fuse_native_semaphore_signal(&(l->sem));
 
@@ -300,34 +328,12 @@ NAPI_METHOD(fuse_native_signal_stat) {
 }
 
 NAPI_METHOD(fuse_native_signal_statfs) {
-  NAPI_ARGV(15)
+  NAPI_ARGV(3)
   NAPI_ARGV_BUFFER_CAST(fuse_thread_locals_t *, l, 0);
   NAPI_ARGV_INT32(res, 1)
+  NAPI_ARGV_BUFFER_CAST(uint32_t*, ints, 2)
 
-  NAPI_ARGV_INT32(bsize, 2)
-  NAPI_ARGV_INT32(frsize, 3)
-  NAPI_ARGV_INT32(blocks, 4)
-  NAPI_ARGV_INT32(bfree, 5)
-  NAPI_ARGV_INT32(bavail, 6)
-  NAPI_ARGV_INT32(files, 7)
-  NAPI_ARGV_INT32(ffree, 8)
-  NAPI_ARGV_INT32(favail, 9)
-  NAPI_ARGV_INT32(fsid, 10)
-  NAPI_ARGV_INT32(flag, 11)
-  NAPI_ARGV_INT32(namemax, 12)
-
-  l->statvfs->f_bsize = bsize;
-  l->statvfs->f_frsize = frsize;
-  l->statvfs->f_blocks = blocks;
-  l->statvfs->f_bfree = bfree;
-  l->statvfs->f_bavail = bavail;
-  l->statvfs->f_files = files;
-  l->statvfs->f_ffree = ffree;
-  l->statvfs->f_favail = favail;
-  l->statvfs->f_fsid = fsid;
-  l->statvfs->f_flag = flag;
-  l->statvfs->f_namemax = namemax;
-
+  populate_statvfs(ints, l->statvfs);
   l->res = res;
   fuse_native_semaphore_signal(&(l->sem));
 
@@ -346,9 +352,43 @@ NAPI_METHOD(fuse_native_signal_buffer) {
 }
 
 NAPI_METHOD(fuse_native_signal_readdir) {
-  NAPI_ARGV(2)
+  printf("In signal readdir\n");
+  NAPI_ARGV(4)
   NAPI_ARGV_BUFFER_CAST(fuse_thread_locals_t *, l, 0);
   NAPI_ARGV_INT32(res, 1)
+
+  uint32_t stats_length;
+  uint32_t names_length;
+  napi_get_array_length(env, argv[3], &stats_length);
+  napi_get_array_length(env, argv[2], &names_length);
+
+  napi_value raw_names = argv[2];
+  napi_value raw_stats = argv[3];
+
+  if (names_length != stats_length) {
+    NAPI_FOR_EACH(raw_names, raw_name) {
+      NAPI_UTF8(name, 1024, raw_name)
+      int err = l->readdir_filler(l->buf, name, NULL, 0);
+      if (err == 1) {
+        break;
+      }
+    }
+  } else {
+    NAPI_FOR_EACH(raw_names, raw_name) {
+      NAPI_UTF8(name, 1024, raw_name)
+      napi_value raw_stat;
+      napi_get_element(env, raw_stats, i, &raw_stat);
+
+      NAPI_BUFFER_CAST(uint32_t*, stats_array, raw_stat);
+      struct stat st;
+      populate_stat(stats_array, &st);
+
+      int err = l->readdir_filler(l->buf, name, stat, 0);
+      if (err == 1) {
+        break;
+      }
+    }
+  }
 
   l->res = res;
   fuse_native_semaphore_signal(&(l->sem));
@@ -365,7 +405,7 @@ NAPI_METHOD(fuse_native_mount) {
   napi_create_reference(env, argv[3], 1, &(ft->ctx));
 
   napi_create_reference(env, argv[4], 1, &(ft->on_path_op));
-  napi_create_reference(env, argv[5], 1, &(ft->on_statfs_op));
+  napi_create_reference(env, argv[5], 1, &(ft->on_statfs));
   napi_create_reference(env, argv[6], 1, &(ft->on_stat_op));
   napi_create_reference(env, argv[7], 1, &(ft->on_buffer_op));
   napi_create_reference(env, argv[8], 1, &(ft->on_readdir));
@@ -376,6 +416,7 @@ NAPI_METHOD(fuse_native_mount) {
   struct fuse_operations ops = {
     .getattr = fuse_native_getattr,
     .statfs = fuse_native_statfs,
+    .readdir = fuse_native_readdir
     /*
     .init = fuse_native_init,
     .error = fuse_native_error,
