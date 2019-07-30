@@ -68,8 +68,8 @@ class Fuse {
 
   mount () {
     binding.fuse_native_mount(this.mnt, '-odebug', this._thread, this,
-                              this.on_path_op, this.on_statfs_op, this.on_stat_op,
-                              this.on_buffer_op, this.on_readdir, this.on_symlink)
+                              this.on_path_op, this.on_stat_op, this.on_fd_op, this.on_xattr_op,
+                              this.on_statfs, this.on_readdir, this.on_symlink)
   }
 
   unmount () {
@@ -82,24 +82,17 @@ class Fuse {
   }
 
   on_readdir (handle, op, path) {
-    console.log('IN ONREADDIR')
     const signalFunc = binding.fuse_native_signal_readdir.bind(binding)
 
     if (!this._implemented.has(op)) return this._signal(signalFunc, [handle, -1])
 
     this.ops.readdir(path, (err, names, stats) => {
       if (stats) stats = stats.map(getStatArray)
-      console.error('readdir err:', err, 'names:', names, 'stats:', stats)
       return this._signal(signalFunc, [handle, err, names, stats || []])
     })
   }
 
-  on_buffer_op (handle, op, path, buf) {
-    const signalFunc = binding.fuse_native_signal_buffer.bind(binding)
-    if (!this._implemented.has(op)) return this._signal(signalFunc, [handle, -1])
-  }
-
-  on_statfs_op (handle, op, path) {
+  on_statfs (handle, op) {
     const signalFunc = binding.fuse_native_signal_statfs.bind(binding)
     if (!this._implemented.has(op)) return this._signal(signalFunc, [handle, -1, ...getStatfsArray()])
 
@@ -109,27 +102,102 @@ class Fuse {
     })
   }
 
-  on_stat_op (handle, op, path) {
-    const signalFunc = binding.fuse_native_signal_stat.bind(binding)
-    if (!this._implemented.has(op)) return this._signal(signalFunc, [handle, -1, getStatArray()])
+  on_fd_op (handle, op, path, fd, buf, len, offset) {
+    const signalFunc = binding.fuse_native_signal_buffer.bind(binding)
+    if (!this._implemented.has(op)) return this._signal(signalFunc, [handle, -1])
+
+    const cb = (bytesProcessed) => {
+      return this._signal(signalFunc, [handle, bytesProcessed || 0])
+    }
 
     switch (op) {
-      case (binding.op_getattr):
-        this.ops.getattr(path, (err, stat) => {
-          const arr = getStatArray(stat)
-          return this._signal(signalFunc, [handle, err, arr])
-        })
+      case (binding.op_read):
+        this.ops.read(path, fd, buf, len, offset, cb)
         break
-
+      case (binding.op_write):
+        this.ops.write(path, fd, buf, len, offset, cb)
+        break
+      case(binding.op_release):
+        this.ops.release(path, fd, cb)
+        break
+      case(binding.op_releasedir):
+        this.ops.releasedir(path, fd, cb)
+        break
       default:
-      return this._signal(signalFunc, [handle, -1, getStatArray()])
+        return this._signal(signalFunc, [handle, 0])
     }
   }
 
-  on_path_op (handle, op, path) {
-    const signalFunc = binding.fuse_native_signal_path.bind(binding)
-    if (!this._implemented.has(op)) return this._signal(signalFunc, [handle, -1])
+  on_stat_op (handle, op, path, fd) {
+    const signalFunc = binding.fuse_native_signal_stat.bind(binding)
+    if (!this._implemented.has(op)) return this._signal(signalFunc, [handle, -1, getStatArray()])
 
+    const cb = (err, stat) => {
+      const arr = getStatArray(stat)
+      return this._signal(signalFunc, [handle, err, arr])
+    }
+
+    switch (op) {
+      case (binding.op_getattr):
+        this.ops.getattr(path, cb)
+        break
+      case (binding.op_fgetattr):
+        this.ops.fgetattr(path, fd, cb)
+      default:
+        return this._signal(signalFunc, [handle, -1, getStatArray()])
+    }
+  }
+
+  on_path_op (handle, op, path, mode, flags, atim, mtim) {
+    const signalFunc = binding.fuse_native_signal_path.bind(binding)
+    if (!this._implemented.has(op)) return this._signal(signalFunc, [handle, -1, 0])
+
+    const cb = (err, fd) => {
+      return this._signal(signalFunc, [handle, err, fd || 0])
+    }
+
+    switch (op) {
+      case (binding.op_open):
+        this.ops.open(path, flags, cb)
+        break
+      case (binding.op_create):
+        this.ops.create(path, mode, cb)
+        break
+      case (binding.op_access):
+        this.ops.access(path, mode, cb)
+        break
+      case (binding.op_utimens):
+        this.ops.utimens(path, getDoubleInt(atim, 0), getDoubleInt(mtim, 0), cb)
+        break
+      default:
+        return this._signal(signalFunc, [handle, -1, 0])
+    }
+  }
+
+  on_xattr_op (handle, op, path, name, value, list, size, flags, position) {
+    const signalFunc = binding.fuse_native_signal_xattr.bind(binding)
+    if (!this._implemented.has(op)) return this._signal(signalFunc, [handle, -1, 0])
+
+    const cb = err => {
+      return this._signal(signalFunc, [handle, -1])
+    }
+
+    switch (op) {
+      case (binding.op_setxattr):
+        this.ops.setxattr(path, name, value, size, position || 0, flags, cb)
+        break
+      case (binding.op_getxattr):
+        this.ops.getxattr(path, name, value, size, position || 0, cb)
+        break
+      case (binding.op_listxattr):
+        this.ops.listxattr(path, list, size, cb)
+        break
+      case (binding.op_removexattr):
+        this.ops.removexattr(path, name, cb)
+        break
+      default:
+        return this._signal(signalFunc, [handle, -1])
+    }
   }
 }
 
@@ -154,6 +222,13 @@ function getStatfsArray (statfs) {
 function setDoubleInt (arr, idx, num) {
   arr[idx] = num % 4294967296
   arr[idx + 1] = (num - arr[idx]) / 4294967296
+}
+
+function getDoubleInt(arr, idx) {
+  arr = new Uint32Array(arr)
+  var num = arr[idx + 1] * 4294967296
+  num += arr[idx]
+  return num
 }
 
 function getStatArray (stat) {
@@ -192,6 +267,15 @@ function emptyStat () {
 const f = new Fuse('mnt', {
   getattr: (path, cb) => {
     return cb(0, emptyStat())
+  },
+  access: (path, mode, cb) => {
+    return cb(0, 0)
+  },
+  setxattr: (path, name, buffer, length, offset, cb) => {
+    return cb(0)
+  },
+  utimens: (path, atim, mtim, cb) => {
+    return cb(0)
   },
   readdir: (path, cb) => {
     if (path === '/') {
