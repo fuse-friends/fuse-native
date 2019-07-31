@@ -251,14 +251,14 @@ function getStatArray (stat) {
   return ints
 }
 
-function emptyStat () {
+function emptyStat (mode) {
   return {
     mtime: new Date(),
     atime: new Date(),
     ctime: new Date(),
     nlink: 1,
     size: 100,
-    mode: 16877,
+    mode: mode,
     uid: process.getuid ? process.getuid() : 0,
     gid: process.getgid ? process.getgid() : 0
   }
@@ -266,7 +266,8 @@ function emptyStat () {
 
 const f = new Fuse('mnt', {
   getattr: (path, cb) => {
-    return cb(0, emptyStat())
+    if (path === '/') return cb(0, emptyStat(16877))
+    return cb(0, emptyStat(33188))
   },
   access: (path, mode, cb) => {
     return cb(0, 0)
@@ -279,7 +280,7 @@ const f = new Fuse('mnt', {
   },
   readdir: (path, cb) => {
     if (path === '/') {
-      return cb(0, ['a', 'b', 'c'], Array(3).fill('a').map(() => emptyStat()))
+      return cb(0, ['a', 'b', 'c'], Array(3).fill('a').map(() => emptyStat(16877)))
     }
     return cb(0, [], [])
   }
