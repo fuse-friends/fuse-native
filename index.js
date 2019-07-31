@@ -8,42 +8,116 @@ const OSX_FOLDER_ICON = '/System/Library/CoreServices/CoreTypes.bundle/Contents/
 const HAS_FOLDER_ICON = IS_OSX && fs.existsSync(OSX_FOLDER_ICON)
 
 const binding = require('node-gyp-build')(__dirname)
-const Opcodes = new Map([
-  [ 'init', 0 ],
-  [ 'error', 1 ],
-  [ 'access', 2 ],
-  [ 'statfs', 3 ],
-  [ 'fgetattr', 4 ],
-  [ 'getattr', 5 ],
-  [ 'flush', 6 ],
-  [ 'fsync', 7 ],
-  [ 'fsyncdir', 8 ],
-  [ 'readdir', 9 ],
-  [ 'truncate', 10 ],
-  [ 'ftruncate', 11 ],
-  [ 'utimens', 12 ],
-  [ 'readlink', 13 ],
-  [ 'chown', 14 ],
-  [ 'chmod', 15 ],
-  [ 'mknod', 16 ],
-  [ 'setxattr', 17 ],
-  [ 'getxattr', 18 ],
-  [ 'listxattr', 19 ],
-  [ 'removexattr', 20 ],
-  [ 'open', 21 ],
-  [ 'opendir', 22 ],
-  [ 'read', 23 ],
-  [ 'write', 24 ],
-  [ 'release', 25 ],
-  [ 'releasedir', 26 ],
-  [ 'create', 27 ],
-  [ 'unlink', 28 ],
-  [ 'rename', 29 ],
-  [ 'link', 30 ],
-  [ 'symlink', 31 ],
-  [ 'mkdir', 32 ],
-  [ 'rmdir', 33 ],
-  [ 'destroy', 34 ]
+const OpcodesAndDefaults = new Map([
+  [ 'init', {
+    op: 0
+  } ],
+  [ 'error', {
+    op: 1
+  } ],
+  [ 'access', {
+    op: 2,
+    defaults: [ 0 ]
+  } ],
+  [ 'statfs', {
+    op: 3,
+    defaults: [ getStatfsArray() ]
+  } ],
+  [ 'fgetattr', {
+    op: 4,
+    defaults: [ getStatArray() ]
+  } ],
+  [ 'getattr', {
+    op: 5,
+    defaults: [ getStatArray() ]
+  } ],
+  [ 'flush', {
+    op: 6,
+  } ],
+  [ 'fsync', {
+     op: 7
+  } ],
+  [ 'fsyncdir', {
+     op: 8
+  } ],
+  [ 'readdir', {
+     op: 9
+  } ],
+  [ 'truncate', {
+     op: 10
+  } ],
+  [ 'ftruncate', {
+     op: 11
+  } ],
+  [ 'utimens', {
+     op: 12
+  } ],
+  [ 'readlink', {
+     op: 13
+  } ],
+  [ 'chown', {
+     op: 14
+  } ],
+  [ 'chmod', {
+     op: 15
+  } ],
+  [ 'mknod', {
+     op: 16
+  } ],
+  [ 'setxattr', {
+     op: 17
+  } ],
+  [ 'getxattr', {
+     op: 18
+  } ],
+  [ 'listxattr', {
+     op: 19
+  } ],
+  [ 'removexattr', {
+     op: 20
+  } ],
+  [ 'open', {
+     op: 21
+  } ],
+  [ 'opendir', {
+     op: 22
+  } ],
+  [ 'read', {
+     op: 23
+  } ],
+  [ 'write', {
+     op: 24
+  } ],
+  [ 'release', {
+     op: 25
+  } ],
+  [ 'releasedir', {
+     op: 26
+  } ],
+  [ 'create', {
+     op: 27
+  } ],
+  [ 'unlink', {
+     op: 28
+  } ],
+  [ 'rename', {
+     op: 29
+  } ],
+  [ 'link', {
+     op: 30
+  } ],
+  [ 'symlink', {
+     op: 31
+  } ],
+  [ 'mkdir', {
+     op: 32
+  } ],
+  [ 'rmdir', {
+     op: 33
+  } ],
+  [ 'destroy', {
+     op: 34
+  } ]
 ])
 
 class Fuse {
@@ -53,10 +127,11 @@ class Fuse {
 
     this.ops = ops
     this._thread = Buffer.alloc(binding.sizeof_fuse_thread_t)
+    this._handlers = this._makeHandlerArray()
     // Keep the process alive while fuse is mounted.
     this._timer = null
 
-    const implemented = ['init', 'error', 'getattr']
+    const implemented = [0, 1, 5]
     if (ops) {
       for (const [name, code] of Opcodes) {
         if (ops[name]) implemented.push(code)
@@ -66,39 +141,6 @@ class Fuse {
 
     // Used to determine if the user-defined callback needs to be nextTick'd.
     this._sync = true
-  }
-
-  _withDefaultOps (cb) {
-    const withDefaults = { ...this.ops }
-
-    const callback = function (err) {
-      callback = noop
-      setImmediate(cb.bind(null, err))
-    }
-
-    var init = this.ops.init || call
-    withDefaults.init = function (next) {
-      console.log('IN INIT')
-      callback()
-      if (init.length > 1) init(this.mnt, next) // backwards compat for now
-      else init(next)
-    }
-
-    var error = this.ops.error || call
-    withDefaults.error = function (next) {
-      console.log('IN ERROR')
-      callback(new Error('Mount failed'))
-      error(next)
-    }
-
-    if (!this.ops.getattr) { // we need this for unmount to work on osx
-      withDefaults.getattr = function (path, cb) {
-        if (path !== '/') return cb(Fuse.EPERM)
-        cb(null, { mtime: new Date(0), atime: new Date(0), ctime: new Date(0), mode: 16877, size: 4096 })
-      }
-    }
-
-    return withDefaults
   }
 
   _fuseOptions () {
@@ -144,72 +186,117 @@ class Fuse {
     process.nextTick(() => signalFunc.apply(null, args))
   }
 
-  mount (cb) {
-    this.ops = this._withDefaultOps(this.ops, cb)
-    const opts = this._fuseOptions()
+  // Handlers
 
-    fs.stat(this.mnt, (err, stat) => {
-      if (err) return cb(new Error('Mountpoint does not exist'))
-      if (!stat.isDirectory()) return cb(new Error('Mountpoint is not a directory'))
-      fs.stat(path.join(this.mnt, '..'), (_, parent) => {
-        if (parent && parent.dev !== stat.dev) return cb(new Error('Mountpoint in use'))
-        try {
-          // TODO: asyncify
-          binding.fuse_native_mount(this.mnt, opts, this._thread, this,
-                                this.on_path_op, this.on_stat_op, this.on_fd_op, this.on_xattr_op,
-                                this.on_statfs, this.on_readdir, this.on_symlink)
-        } catch (err) {
-          return cb(err)
-        }
-        this._timer = setInterval(() => {}, 10000)
-        return cb(null)
-      })
-    })
-  }
+  _makeHandlerArray () {
+    const handlers = new Array(OpcodesAndDefaults.size)
+    for (const [name, { op, defaults }] of OpcodesAndDefaults) {
+      const nativeSignal = binding[`fuse_native_signal_${name}`]
+      if (!nativeSignal) continue
 
-  unmount (cb) {
-    // TODO: asyncify
-    try {
-      binding.fuse_native_unmount(this.mnt, this._thread)
-    } catch (err) {
-      clearInterval(this._timer)
-      return process.nextTick(cb, err)
+      handlers[op] = makeHandler(name, op, defaults, nativeSignal)
     }
-    clearInterval(this._timer)
-    return process.nextTick(cb, null)
+
+    return handlers
+
+    function makeHandler (name, op, defaults, nativeSignal) {
+      return () => {
+        const boundSignal = signal.bind(arguments[0])
+        const funcName = `_$name`
+        if (!this[funcName] || !this._implemented.has(op)) return boundSignal(-1, defaults)
+        this[funcName].apply(null, [boundSignal, [...arguments].slice(1) ])
+      }
+
+      function signal (nativeHandler, err, args) {
+        const args = [nativeHandler, err]
+        if (defaults) args.concat(defaults)
+        return nativeSignal(args)
+      }
+    }
   }
 
-  errno (code) {
-    return (code && Fuse[code.toUpperCase()]) || -1
+  _init (signal) {
+    if (!this.ops.init) return signal(0)
+    this.ops.init(err => {
+      return signal(err)
+    })
   }
 
-  on_symlink (handle, op, path, target) {
-    const signalFunc = binding.fuse_native_signal_path.bind(binding)
-    if (!this._implemented.has(op)) return this._signal(signalFunc, [handle, -1])
+  _error (signal) {
+    if (!this.ops.error) return signal(0)
+    this.ops.error(err => {
+      return signal(err)
+    })
   }
 
-  on_readdir (handle, op, path) {
-    const signalFunc = binding.fuse_native_signal_readdir.bind(binding)
+  _getattr (signal, path) {
+    if (!this.ops.getattr) {
+      if (path !== '/') return signal(Fuse.EPERM)
+      return signal(0, getStatArray({ mtime: new Date(0), atime: new Date(0), ctime: new Date(0), mode: 16877, size: 4096 }))
+    }
+    this.ops.getattr(path, (err, stat) => {
+      if (err) return signal(err)
+      return signal(0, getStatArray(stat))
+    })
+  }
 
-    if (!this._implemented.has(op)) return this._signal(signalFunc, [handle, -1])
+  _fgetattr (signal, path, fd) {
 
+  }
+
+  _setxattr (signal, path, name, value, size, position, flags) {
+    
+  }
+
+  _getxattr (signal, path, name, value, size, position) {
+    
+  }
+
+  _listxattr (signal, path, list, size) {
+    
+  }
+
+  _open (signal, path) {
+
+  }
+
+  _create (signal, path, mode) {
+    
+  }
+
+  _read (signal, path, fd, buf, len, offset) {
+    
+  }
+
+  _write (signal, path, fd, buf, len, offset) {
+   
+  }
+
+  _release (signal, path, fd) {
+    
+  }
+
+  _releasedir (signal, path, fd) {
+    
+  }
+
+  _readdir (signal, path) {
     this.ops.readdir(path, (err, names, stats) => {
+      if (err) return signal(err)
       if (stats) stats = stats.map(getStatArray)
-      return this._signal(signalFunc, [handle, err, names, stats || []])
+      return signal(null, [names, stats || []])
     })
   }
 
-  on_statfs (handle, op) {
-    const signalFunc = binding.fuse_native_signal_statfs.bind(binding)
-    if (!this._implemented.has(op)) return this._signal(signalFunc, [handle, -1, ...getStatfsArray()])
-
+  _statfs (signal) {
     this.ops.statfs((err, statfs) => {
+      if (err) return signal(err)
       const arr = getStatfsArray(statfs)
-      return this._signal(signalFunc, [handle, err, arr])
+      return signal(null, [arr])
     })
   }
 
-  on_fd_op (handle, op, path, fd, buf, len, offset) {
+  _fd_op (handle, op, path, fd, buf, len, offset) {
     const signalFunc = binding.fuse_native_signal_buffer.bind(binding)
     if (!this._implemented.has(op)) return this._signal(signalFunc, [handle, -1])
 
@@ -305,6 +392,48 @@ class Fuse {
       default:
         return this._signal(signalFunc, [handle, -1])
     }
+  }
+
+  on_symlink (path, target) {
+
+  }
+
+  // Public API
+
+  mount (cb) {
+    const opts = this._fuseOptions()
+
+    fs.stat(this.mnt, (err, stat) => {
+      if (err) return cb(new Error('Mountpoint does not exist'))
+      if (!stat.isDirectory()) return cb(new Error('Mountpoint is not a directory'))
+      fs.stat(path.join(this.mnt, '..'), (_, parent) => {
+        if (parent && parent.dev !== stat.dev) return cb(new Error('Mountpoint in use'))
+        try {
+          // TODO: asyncify
+          binding.fuse_native_mount(this.mnt, opts, this._thread, this, this._handlers)
+        } catch (err) {
+          return cb(err)
+        }
+        this._timer = setInterval(() => {}, 10000)
+        return cb(null)
+      })
+    })
+  }
+
+  unmount (cb) {
+    // TODO: asyncify
+    try {
+      binding.fuse_native_unmount(this.mnt, this._thread)
+    } catch (err) {
+      clearInterval(this._timer)
+      return process.nextTick(cb, err)
+    }
+    clearInterval(this._timer)
+    return process.nextTick(cb, null)
+  }
+
+  errno (code) {
+    return (code && Fuse[code.toUpperCase()]) || -1
   }
 }
 

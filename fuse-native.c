@@ -13,7 +13,6 @@
 #include <fuse_opt.h>
 #include <fuse_lowlevel.h>
 
-
 #include <unistd.h>
 #include <sys/wait.h>
 #include <pthread.h>
@@ -29,14 +28,42 @@
   blk                                           \
   napi_close_handle_scope(env, scope);
 
-#define FUSE_NATIVE_HANDLER(blk)                            \
+#define FUSE_NATIVE_HANDLER(name, blk)                      \
   struct fuse_context *ctx = fuse_get_context();            \
   fuse_thread_t *ft = (fuse_thread_t *) ctx->private_data;  \
   fuse_thread_locals_t *l = get_thread_locals();            \
+  l->fuse = ft;                                             \
+  l->op = op_##name;                                        \
   blk                                                       \
   uv_async_send(&(l->async));                               \
   fuse_native_semaphore_wait(&(l->sem));                    \
   return l->res;
+
+#define FUSE_METHOD(name, callbackArgs, signalArgs, signature, callBlk, callbackBlk, signalBlk)                          \
+  static void fuse_native_dispatch_##name (uv_async_t* handle, int status, fuse_thread_locals_t* l, fuse_thread_t* ft) { \
+    uint32_t op = op_##name;                                                                                             \
+    FUSE_NATIVE_CALLBACK(ft->handlers[op], {                                                                             \
+      napi_value argv[callbackArgs + 2];                                                                                         \
+      napi_create_external_buffer(env, sizeof(fuse_thread_locals_t), l, &fin, NULL, &(argv[0]));                         \
+      napi_create_uint32(env, l->op, &(argv[1]));                                                                        \
+      callbackBlk                                                                                                        \
+      NAPI_MAKE_CALLBACK(env, NULL, ctx, callback, callbackArgs + 2, argv, NULL)                                                 \
+    })                                                                                                                   \
+  }                                                                                                                      \
+  NAPI_METHOD(fuse_native_signal_##name) {                                                                            \
+    NAPI_ARGV(signalArgs + 2)                                                                                            \
+    NAPI_ARGV_BUFFER_CAST(fuse_thread_locals_t *, l, 0);                                                                 \
+    NAPI_ARGV_INT32(res, 1);                                                                                             \
+    signalBlk                                                                                                            \
+    l->res = res;                                                                                                        \
+    fuse_native_semaphore_signal(&(l->sem));                                                                             \
+    return NULL;                                                                                                         \
+  }                                                                                                                      \
+  static int fuse_native_##name signature {                                                                           \
+    FUSE_NATIVE_HANDLER(name, callBlk)                                   \
+  }                                                                                                                      \
+
+// Opcodes
 
 static const uint32_t op_init = 0;
 static const uint32_t op_error = 1;
@@ -74,6 +101,8 @@ static const uint32_t op_mkdir = 32;
 static const uint32_t op_rmdir = 33;
 static const uint32_t op_destroy = 34;
 
+// Data structures
+
 typedef struct {
   napi_env env;
   pthread_t thread;
@@ -81,13 +110,7 @@ typedef struct {
   napi_ref ctx;
 
   // Operation handlers
-  napi_ref on_path_op;
-  napi_ref on_stat_op;
-  napi_ref on_buffer_op;
-  napi_ref on_xattr_op;
-  napi_ref on_statfs;
-  napi_ref on_readdir;
-  napi_ref on_symlink;
+  napi_ref handlers[34];
 
   struct fuse *fuse;
   struct fuse_chan *ch;
@@ -133,6 +156,7 @@ typedef struct {
 } fuse_thread_locals_t;
 
 static pthread_key_t thread_locals_key;
+static fuse_thread_locals_t* get_thread_locals ();
 
 // Helpers
 // TODO: Extract into a separate file.
@@ -184,136 +208,364 @@ static void populate_statvfs (uint32_t *ints, struct statvfs* statvfs) {
   statvfs->f_namemax =  *ints++;
 }
 
-// Dispatchers
+// Methods
 
-static void fuse_native_dispatch_statfs(uv_async_t* handle, int status, fuse_thread_locals_t* l, fuse_thread_t* ft) {
-  FUSE_NATIVE_CALLBACK(ft->on_statfs, {
-      napi_value argv[2];
-
-      napi_create_external_buffer(env, sizeof(fuse_thread_locals_t), l, &fin, NULL, &(argv[0]));
-      napi_create_uint32(env, l->op, &(argv[1]));
-
-      NAPI_MAKE_CALLBACK(env, NULL, ctx, callback, 2, argv, NULL)
+FUSE_METHOD(statfs, 0, 1, (struct statvfs *statvfs), {
+    l->statvfs = statvfs;
+  },
+  {},
+  {
+    NAPI_ARGV_BUFFER_CAST(uint32_t*, ints, 2)
+    populate_statvfs(ints, l->statvfs);
   })
-}
 
-static void fuse_native_dispatch_stat(uv_async_t* handle, int status, fuse_thread_locals_t* l, fuse_thread_t* ft) {
-  FUSE_NATIVE_CALLBACK(ft->on_stat_op, {
-    napi_value argv[4];
+FUSE_METHOD(getattr, 1, 1, (const char *path, struct stat *stat, struct fuse_file_info *info), {
+    l->path = path;
+    l->stat = stat;
+  },
+  {
+    napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
+  },
+  {
+    NAPI_ARGV_BUFFER_CAST(uint32_t*, ints, 2)
+    populate_stat(ints, l->stat);
+  })
 
-    napi_create_external_buffer(env, sizeof(fuse_thread_locals_t), l, &fin, NULL, &(argv[0]));
-    napi_create_uint32(env, l->op, &(argv[1]));
+FUSE_METHOD(fgetattr, 2, 1, (const char *path, struct stat *stat, struct fuse_file_info *info), {
+    l->path = path;
+    l->stat = stat;
+    l->info = info;
+  },
+  {
     napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
     if (l->info != NULL) {
       napi_create_uint32(env, l->info->fh, &(argv[3]));
     } else {
       napi_create_uint32(env, 0, &(argv[3]));
     }
-
-    NAPI_MAKE_CALLBACK(env, NULL, ctx, callback, 4, argv, NULL)
+  },
+  {
+    NAPI_ARGV_BUFFER_CAST(uint32_t*, ints, 2)
+    populate_stat(ints, l->stat);
   })
-}
 
-static void fuse_native_dispatch_path(uv_async_t* handle, int status, fuse_thread_locals_t* l, fuse_thread_t* ft) {
-  FUSE_NATIVE_CALLBACK(ft->on_path_op, {
-    napi_value argv[7];
-
-    napi_create_external_buffer(env, sizeof(fuse_thread_locals_t), l, &fin, NULL, &(argv[0]));
-    napi_create_uint32(env, l->op, &(argv[1]));
+FUSE_METHOD(access, 2, 0, (const char *path, int mode), {
+    l->path = path;
+    l->mode = mode;
+  },
+  {
     napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
     napi_create_uint32(env, l->mode, &(argv[3]));
+  },
+  {})
 
+FUSE_METHOD(open, 1, 1, (const char *path, struct fuse_file_info *info), {
+    l->path = path;
+    l->info = info;
+  },
+  {
     if (l->info != NULL) {
-      napi_create_uint32(env, l->info->fh, &(argv[4]));
+      napi_create_uint32(env, l->info->fh, &(argv[2]));
     } else {
-      napi_create_uint32(env, 0, &(argv[4]));
+      napi_create_uint32(env, 0, &(argv[2]));
     }
+  },
+  {
+    NAPI_ARGV_INT32(fd, 2)
+    if (fd != 0) {
+      l->info->fh = fd;
+    }
+  })
 
-    if (l->atim != NULL) {
-      napi_create_external_arraybuffer(env, l->atim, 2 * sizeof(uint32_t), &fin, NULL, &argv[5]);
-      napi_create_external_arraybuffer(env, l->mtim, 2 * sizeof(uint32_t), &fin, NULL, &argv[6]);
+FUSE_METHOD(create, 2, 1, (const char *path, mode_t mode, struct fuse_file_info *info), {
+    l->path = path;
+    l->mode = mode;
+    l->info = info;
+  },
+  {
+    napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
+    napi_create_uint32(env, l->mode, &(argv[3]));
+  },
+  {
+    NAPI_ARGV_INT32(fd, 2)
+      if (fd != 0) {
+        l->info->fh = fd;
+      }
+  })
+
+FUSE_METHOD(utimens, 2, 0, (const char *path, const struct timespec tv[2]), {
+    l->path = path;
+    from_timespec(&tv[0], l->atim);
+    from_timespec(&tv[1], l->mtim);
+  },
+  {
+    napi_create_external_arraybuffer(env, l->atim, 2 * sizeof(uint32_t), &fin, NULL, &argv[2]);
+    napi_create_external_arraybuffer(env, l->mtim, 2 * sizeof(uint32_t), &fin, NULL, &argv[3]);
+  },
+  {})
+
+FUSE_METHOD(release, 2, 0, (const char *path, struct fuse_file_info *info), {
+    l->path = path;
+    l->info = info;
+  },
+  {
+    if (l->info != NULL) {
+      napi_create_uint32(env, l->info->fh, &(argv[2]));
     } else {
-      napi_create_external_arraybuffer(env, NULL, 0, &fin, NULL, &argv[5]);
-      napi_create_external_arraybuffer(env, NULL, 0, &fin, NULL, &argv[6]);
+      napi_create_uint32(env, 0, &(argv[2]));
     }
+  },
+  {})
 
-    NAPI_MAKE_CALLBACK(env, NULL, ctx, callback, 7, argv, NULL)
+FUSE_METHOD(releasedir, 2, 0, (const char *path, struct fuse_file_info *info), {
+    l->path = path;
+    l->info = info;
+  },
+  {
+    if (l->info != NULL) {
+      napi_create_uint32(env, l->info->fh, &(argv[2]));
+    } else {
+      napi_create_uint32(env, 0, &(argv[2]));
+    }
+  },
+  {})
+
+FUSE_METHOD(read, 5, 1, (const char *path, char *buf, size_t len, off_t offset, struct fuse_file_info *info), {
+    l->path = path;
+    l->buf = buf;
+    l->len = len;
+    l->offset = offset;
+    l->info = info;
+  },
+  {
+    napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
+    napi_create_uint32(env, l->info->fh, &(argv[3]));
+    napi_create_external_buffer(env, l->len, l->buf, &fin, NULL, &(argv[4]));
+    napi_create_uint32(env, l->len, &(argv[5]));
+    napi_create_uint32(env, l->offset, &(argv[6]));
+  },
+  {
+    // TODO: handle bytes processed?
   })
-}
 
-static void fuse_native_dispatch_readdir(uv_async_t* handle, int status, fuse_thread_locals_t* l, fuse_thread_t* ft) {
-  FUSE_NATIVE_CALLBACK(ft->on_readdir, {
-      napi_value argv[3];
-
-      napi_create_external_buffer(env, sizeof(fuse_thread_locals_t), l, &fin, NULL, &(argv[0]));
-      napi_create_uint32(env, l->op, &(argv[1]));
-      napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
-
-      NAPI_MAKE_CALLBACK(env, NULL, ctx, callback, 3, argv, NULL)
+FUSE_METHOD(write, 5, 1, (const char *path, char *buf, size_t len, off_t offset, struct fuse_file_info *info), {
+    l->path = path;
+    l->buf = buf;
+    l->len = len;
+    l->offset = offset;
+    l->info = info;
+  },
+  {
+    napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
+    napi_create_uint32(env, l->info->fh, &(argv[3]));
+    napi_create_external_buffer(env, l->len, l->buf, &fin, NULL, &(argv[4]));
+    napi_create_uint32(env, l->len, &(argv[5]));
+    napi_create_uint32(env, l->offset, &(argv[6]));
+  },
+  {
+    // TODO: handle bytes processed?
   })
-}
 
-static void fuse_native_dispatch_buffer(uv_async_t* handle, int status, fuse_thread_locals_t* l, fuse_thread_t* ft) {
-  FUSE_NATIVE_CALLBACK(ft->on_buffer_op, {
-      napi_value argv[7];
+FUSE_METHOD(readdir, 1, 2, (const char *path, void *buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *info), {
+    l->buf = buf;
+    l->path = path;
+    l->offset = offset;
+    l->info = info;
+    l->readdir_filler = filler;
+  },
+  {
+    napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
+  },
+  {
+    uint32_t stats_length;
+    uint32_t names_length;
+    napi_get_array_length(env, argv[3], &stats_length);
+    napi_get_array_length(env, argv[2], &names_length);
 
-      napi_create_external_buffer(env, sizeof(fuse_thread_locals_t), l, &fin, NULL, &(argv[0]));
-      napi_create_uint32(env, l->op, &(argv[1]));
-      napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
-      napi_create_uint32(env, l->info->fh, &(argv[3]));
-      napi_create_external_buffer(env, l->len, l->buf, &fin, NULL, &(argv[4]));
-      napi_create_uint32(env, l->len, &(argv[5]));
-      napi_create_uint32(env, l->offset, &(argv[6]));
+    napi_value raw_names = argv[2];
+    napi_value raw_stats = argv[3];
 
-      NAPI_MAKE_CALLBACK(env, NULL, ctx, callback, 3, argv, NULL)
+    if (names_length != stats_length) {
+      NAPI_FOR_EACH(raw_names, raw_name) {
+        NAPI_UTF8(name, 1024, raw_name)
+          int err = l->readdir_filler(l->buf, name, NULL, 0);
+        if (err == 1) {
+          break;
+        }
+      }
+    } else {
+      NAPI_FOR_EACH(raw_names, raw_name) {
+        NAPI_UTF8(name, 1024, raw_name)
+        napi_value raw_stat;
+        napi_get_element(env, raw_stats, i, &raw_stat);
+
+        NAPI_BUFFER_CAST(uint32_t*, stats_array, raw_stat);
+        struct stat st;
+        populate_stat(stats_array, &st);
+
+        int err = l->readdir_filler(l->buf, name, stat, 0);
+        if (err == 1) {
+          break;
+        }
+      }
+    }
   })
-}
 
-static void fuse_native_dispatch_xattr(uv_async_t* handle, int status, fuse_thread_locals_t* l, fuse_thread_t* ft) {
-  FUSE_NATIVE_CALLBACK(ft->on_xattr_op, {
-    napi_value argv[9];
+#ifdef __APPLE__
 
-    napi_create_external_buffer(env, sizeof(fuse_thread_locals_t), l, &fin, NULL, &(argv[0]));
-    napi_create_uint32(env, l->op, &(argv[1]));
+FUSE_METHOD(setxattr, 6, 0, (const char *path, const char *name, const char *value, size_t size, int flags, uint32_t position), {
+    l->path = path;
+    l->name = name;
+    l->value = value;
+    l->size = size;
+    l->flags = flags;
+    l->position = position;
+  },
+  {
     napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
     napi_create_string_utf8(env, l->name, NAPI_AUTO_LENGTH, &(argv[3]));
     napi_create_string_utf8(env, l->value, NAPI_AUTO_LENGTH, &(argv[4]));
-    napi_create_external_buffer(env, l->size, l->list, &fin, NULL, &(argv[5]));
-    napi_create_uint32(env, l->size, &(argv[6]));
-    napi_create_uint32(env, l->flags, &(argv[7]));
-    napi_create_uint32(env, l->position, &(argv[8]));
+    napi_create_uint32(env, l->size, &(argv[5]));
+    napi_create_uint32(env, l->flags, &(argv[6]));
+    napi_create_uint32(env, l->position, &(argv[7]));
+  },
+  {})
 
-    NAPI_MAKE_CALLBACK(env, NULL, ctx, callback, 9, argv, NULL)
-  })
-}
+FUSE_METHOD(getxattr, 5, 0, (const char *path, const char *name, const char *value, size_t size, uint32_t position), {
+    l->path = path;
+    l->name = name;
+    l->value = value;
+    l->size = size;
+    l->position = position;
+  },
+  {
+    napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
+    napi_create_string_utf8(env, l->name, NAPI_AUTO_LENGTH, &(argv[3]));
+    napi_create_string_utf8(env, l->value, NAPI_AUTO_LENGTH, &(argv[4]));
+    napi_create_uint32(env, l->size, &(argv[5]));
+    napi_create_uint32(env, l->position, &(argv[6]));
+  },
+  {})
+
+#else
+
+FUSE_METHOD(setxattr, 5, 0, (const char *path, const char *name, const char *value, size_t size, int flags), {
+    l->path = path;
+    l->name = name;
+    l->value = value;
+    l->size = size;
+    l->flags = flags;
+  },
+  {
+    napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
+    napi_create_string_utf8(env, l->name, NAPI_AUTO_LENGTH, &(argv[3]));
+    napi_create_string_utf8(env, l->value, NAPI_AUTO_LENGTH, &(argv[4]));
+    napi_create_uint32(env, l->size, &(argv[5]));
+    napi_create_uint32(env, l->flags, &(argv[6]));
+  },
+  {})
+
+FUSE_METHOD(getxattr, 4, 0, (const char *path, const char *name, const char *value, size_t size), {
+    l->path = path;
+    l->name = name;
+    l->value = value;
+    l->size = size;
+  },
+  {
+    napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
+    napi_create_string_utf8(env, l->name, NAPI_AUTO_LENGTH, &(argv[3]));
+    napi_create_string_utf8(env, l->value, NAPI_AUTO_LENGTH, &(argv[4]));
+    napi_create_uint32(env, l->size, &(argv[5]));
+  },
+  {})
+
+#endif
+
+FUSE_METHOD(listxattr, 3,  0, (const char *path, char *list, size_t size), {
+    l->path = path;
+    l->list = list;
+    l->size = size;
+  },
+  {
+    napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
+    napi_create_external_buffer(env, l->size, l->list, &fin, NULL, &(argv[3]));
+    napi_create_uint32(env, l->size, &(argv[4]));
+  },
+  {})
+
+FUSE_METHOD(removexattr, 2, 0, (const char *path, const char *name), {
+    l->path = path;
+    l->name = name;
+  },
+  {
+    napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
+    napi_create_string_utf8(env, l->name, NAPI_AUTO_LENGTH, &(argv[3]));
+  },
+  {})
+
+FUSE_METHOD(init, 0, 0, (struct fuse_conn_info *conn, struct fuse_config *cfg), {}, {}, {})
+
+FUSE_METHOD(error, 0, 0, (), {}, {}, {})
+FUSE_METHOD(flush, 0, 0, (), {}, {}, {})
+FUSE_METHOD(fsync, 0, 0, (), {}, {}, {})
+FUSE_METHOD(fsyncdir, 0, 0, (), {}, {}, {})
+FUSE_METHOD(truncate, 0, 0, (), {}, {}, {})
+FUSE_METHOD(ftruncate, 0, 0, (), {}, {}, {})
+FUSE_METHOD(readlink, 0, 0, (), {}, {}, {})
+FUSE_METHOD(chown, 0, 0, (), {}, {}, {})
+FUSE_METHOD(chmod, 0, 0, (), {}, {}, {})
+FUSE_METHOD(mknod, 0, 0, (), {}, {}, {})
+FUSE_METHOD(opendir, 0, 0, (), {}, {}, {})
+FUSE_METHOD(unlink, 0, 0, (), {}, {}, {})
+FUSE_METHOD(rename, 0, 0, (), {}, {}, {})
+FUSE_METHOD(link, 0, 0, (), {}, {}, {})
+FUSE_METHOD(symlink, 0, 0, (), {}, {}, {})
+FUSE_METHOD(mkdir, 0, 0, (), {}, {}, {})
+FUSE_METHOD(rmdir, 0, 0, (), {}, {}, {})
+FUSE_METHOD(destroy, 0, 0, (), {}, {}, {})
 
 static void fuse_native_dispatch (uv_async_t* handle, int status) {
   fuse_thread_locals_t *l = (fuse_thread_locals_t *) handle->data;
   fuse_thread_t *ft = l->fuse;
 
+  // TODO: Either use a function pointer (like ft->handlers[op]) or generate with a macro.
   switch (l->op) {
-    case (op_statfs):
-      return fuse_native_dispatch_statfs(handle, status, l, ft);
-    case (op_fgetattr):
-    case (op_getattr):
-      return fuse_native_dispatch_stat(handle, status, l, ft);
-    case (op_readdir):
-      return fuse_native_dispatch_readdir(handle, status, l, ft);
-    case (op_open):
-    case (op_create):
-    case (op_access):
-    case (op_utimens):
-      return fuse_native_dispatch_path(handle, status, l, ft);
-    case (op_release):
-    case (op_releasedir):
-    case (op_read):
-    case (op_write):
-      return fuse_native_dispatch_buffer(handle, status, l, ft);
-    case (op_getxattr):
-    case (op_setxattr):
-    case (op_listxattr):
-    case (op_removexattr):
-      return fuse_native_dispatch_xattr(handle, status, l, ft);
+    case (op_init): return fuse_native_dispatch_init(handle, status, l, ft);
+    case (op_statfs): return fuse_native_dispatch_statfs(handle, status, l, ft);
+    case (op_fgetattr): return fuse_native_dispatch_fgetattr(handle, status, l, ft);
+    case (op_getattr): return fuse_native_dispatch_getattr(handle, status, l, ft);
+    case (op_readdir): return fuse_native_dispatch_readdir(handle, status, l, ft);
+    case (op_open): return fuse_native_dispatch_open(handle, status, l, ft);
+    case (op_create): return fuse_native_dispatch_create(handle, status, l, ft);
+    case (op_access): return fuse_native_dispatch_access(handle, status, l, ft);
+    case (op_utimens): return fuse_native_dispatch_utimens(handle, status, l, ft);
+    case (op_release): return fuse_native_dispatch_release(handle, status, l, ft);
+    case (op_releasedir): return fuse_native_dispatch_releasedir(handle, status, l, ft);
+    case (op_read): return fuse_native_dispatch_read(handle, status, l, ft);
+    case (op_write): return fuse_native_dispatch_write(handle, status, l, ft);
+    case (op_getxattr): return fuse_native_dispatch_getxattr(handle, status, l, ft);
+    case (op_setxattr): return fuse_native_dispatch_setxattr(handle, status, l, ft);
+    case (op_listxattr): return fuse_native_dispatch_listxattr(handle, status, l, ft);
+    case (op_removexattr): return fuse_native_dispatch_removexattr(handle, status, l, ft);
+    case (op_error): return fuse_native_dispatch_error(handle, status, l, ft);
+    case (op_flush): return fuse_native_dispatch_flush(handle, status, l, ft);
+    case (op_fsync): return fuse_native_dispatch_fsync(handle, status, l, ft);
+    case (op_fsyncdir): return fuse_native_dispatch_fsyncdir(handle, status, l, ft);
+    case (op_truncate): return fuse_native_dispatch_truncate(handle, status, l, ft);
+    case (op_ftruncate): return fuse_native_dispatch_ftruncate(handle, status, l, ft);
+    case (op_readlink): return fuse_native_dispatch_readlink(handle, status, l, ft);
+    case (op_chown): return fuse_native_dispatch_chown(handle, status, l, ft);
+    case (op_chmod): return fuse_native_dispatch_chmod(handle, status, l, ft);
+    case (op_mknod): return fuse_native_dispatch_mknod(handle, status, l, ft);
+    case (op_opendir): return fuse_native_dispatch_opendir(handle, status, l, ft);
+    case (op_unlink): return fuse_native_dispatch_unlink(handle, status, l, ft);
+    case (op_rename): return fuse_native_dispatch_rename(handle, status, l, ft);
+    case (op_link): return fuse_native_dispatch_link(handle, status, l, ft);
+    case (op_symlink): return fuse_native_dispatch_symlink(handle, status, l, ft);
+    case (op_mkdir): return fuse_native_dispatch_mkdir(handle, status, l, ft);
+    case (op_rmdir): return fuse_native_dispatch_rmdir(handle, status, l, ft);
+    case (op_destroy): return fuse_native_dispatch_destroy(handle, status, l, ft);
+    default: return;
   }
 }
 
@@ -354,290 +606,6 @@ static void* start_fuse_thread (void *data) {
   return NULL;
 }
 
-// Handlers
-
-static int fuse_native_create (const char *path, mode_t mode, struct fuse_file_info *info) {
-  FUSE_NATIVE_HANDLER({
-    l->fuse = ft;
-    l->path = path;
-    l->mode = mode;
-    l->info = info;
-    l->op = op_create;
-  })
-}
-
-static int fuse_native_access(const char *path, int mode) {
-  FUSE_NATIVE_HANDLER({
-    l->fuse = ft;
-    l->path = path;
-    l->mode = mode;
-    l->op = op_access;
-  })
-}
-
-static int fuse_native_open(const char *path, struct fuse_file_info *info) {
-  FUSE_NATIVE_HANDLER({
-    l->fuse = ft;
-    l->path = path;
-    l->info = info;
-    l->op = op_open;
-  })
-}
-
-static int fuse_native_release (const char *path, struct fuse_file_info *info) {
-  FUSE_NATIVE_HANDLER({
-    l->fuse = ft;
-    l->path = path;
-    l->info = info;
-    l->op = op_release;
-  })
-}
-
-static int fuse_native_releasedir (const char *path, struct fuse_file_info *info) {
-  FUSE_NATIVE_HANDLER({
-    l->fuse = ft;
-    l->path = path;
-    l->info = info;
-    l->op = op_releasedir;
-  })
-}
-
-static int fuse_native_write (const char *path, const char *buf, size_t len, off_t offset, struct fuse_file_info * info) {
-  FUSE_NATIVE_HANDLER({
-    l->fuse = ft;
-    l->path = path;
-    l->buf = buf;
-    l->len = len;
-    l->offset = offset;
-    l->info = info;
-    l->op = op_write;
-  })
-}
-
-static int fuse_native_read (const char *path, char *buf, size_t len, off_t offset, struct fuse_file_info *info) {
-  FUSE_NATIVE_HANDLER({
-    l->fuse = ft;
-    l->path = path;
-    l->buf = buf;
-    l->len = len;
-    l->offset = offset;
-    l->info = info;
-    l->op = op_read;
-  })
-}
-
-static int fuse_native_fgetattr (const char *path, struct stat *stat, struct fuse_file_info *info) {
-  FUSE_NATIVE_HANDLER({
-    l->fuse = ft;
-    l->path = path;
-    l->stat = stat;
-    l->info = info;
-    l->op = op_getattr;
-  })
-}
-
-static int fuse_native_statfs (struct statvfs *statvfs) {
-  FUSE_NATIVE_HANDLER({
-    l->fuse = ft;
-    l->statvfs = statvfs;
-    l->op = op_statfs;
-  })
-}
-
-static int fuse_native_readdir (const char *path, void *buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *info) {
-  FUSE_NATIVE_HANDLER({
-    l->fuse = ft;
-    l->buf = buf;
-    l->path = path;
-    l->offset = offset;
-    l->info = info;
-    l->readdir_filler = filler;
-    l->op = op_readdir;
-  })
-}
-
-#ifdef __APPLE__
-static int fuse_native_setxattr (const char *path, const char *name, const char *value, size_t size, int flags, uint32_t position) {
-  FUSE_NATIVE_HANDLER({
-    l->fuse = ft;
-    l->path = path;
-    l->name = name;
-    l->value = value;
-    l->size = size;
-    l->flags = flags;
-    l->position = position;
-    l->op = op_setxattr;
-  })
-}
-
-static int fuse_native_getxattr (const char *path, const char *name, const char *value, size_t size, uint32_t position) {
-  FUSE_NATIVE_HANDLER({
-    l->fuse = ft;
-    l->path = path;
-    l->name = name;
-    l->value = value;
-    l->size = size;
-    l->position = position;
-    l->op = op_getxattr;
-  })
-}
-#else
-static int fuse_native_setxattr (const char *path, const char *name, const char *value, size_t size, int flags, uint32_t position) {
-  FUSE_NATIVE_HANDLER({
-    l->fuse = ft;
-    l->path = path;
-    l->name = name;
-    l->value = value;
-    l->size = size;
-    l->flags = flags;
-    l->position = position;
-    l->op = op_setxattr;
-  })
-}
-
-static int fuse_native_getxattr (const char *path, const char *name, const char *value, size_t size, uint32_t position) {
-  FUSE_NATIVE_HANDLER({
-    l->fuse = ft;
-    l->path = path;
-    l->name = name;
-    l->value = value;
-    l->size = size;
-    l->position = position;
-    l->op = op_getxattr;
-  })
-}
-#endif
-
-static int fuse_native_listxattr (const char *path, char *list, size_t size) {
-  FUSE_NATIVE_HANDLER({
-    l->fuse = ft;
-    l->path = path;
-    l->list = list;
-    l->size = size;
-    l->op = op_listxattr;
-  })
-}
-
-static int fuse_native_removexattr (const char *path, const char *name) {
-  FUSE_NATIVE_HANDLER({
-    l->fuse = ft;
-    l->path = path;
-    l->name = name;
-    l->op = op_removexattr;
-  })
-}
-
-static int fuse_native_utimens (const char *path, const struct timespec tv[2]) {
-  FUSE_NATIVE_HANDLER({
-    l->fuse = ft;
-    l->path = path;
-    from_timespec(&tv[0], l->atim);
-    from_timespec(&tv[1], l->mtim);
-    l->op = op_utimens;
-  })
-}
-
-// Signallers
-
-NAPI_METHOD(fuse_native_signal_path) {
-  NAPI_ARGV(3)
-  NAPI_ARGV_BUFFER_CAST(fuse_thread_locals_t *, l, 0);
-  NAPI_ARGV_INT32(res, 1)
-  NAPI_ARGV_INT32(fd, 2)
-
-  l->res = res;
-  if (fd != 0) {
-    l->info->fh = fd;
-  }
-  fuse_native_semaphore_signal(&(l->sem));
-
-  return NULL;
-}
-
-NAPI_METHOD(fuse_native_signal_stat) {
-  NAPI_ARGV(4)
-  NAPI_ARGV_BUFFER_CAST(fuse_thread_locals_t *, l, 0);
-  NAPI_ARGV_INT32(res, 1)
-  NAPI_ARGV_BUFFER_CAST(uint32_t*, ints, 2)
-
-  populate_stat(ints, l->stat);
-  l->res = res;
-  fuse_native_semaphore_signal(&(l->sem));
-
-  return NULL;
-}
-
-NAPI_METHOD(fuse_native_signal_buffer) {
-  NAPI_ARGV(2)
-  NAPI_ARGV_BUFFER_CAST(fuse_thread_locals_t *, l, 0);
-  NAPI_ARGV_INT32(res, 1)
-
-  l->res = res;
-  fuse_native_semaphore_signal(&(l->sem));
-
-  return NULL;
-}
-
-NAPI_METHOD(fuse_native_signal_xattr) {
-}
-
-NAPI_METHOD(fuse_native_signal_statfs) {
-  NAPI_ARGV(3)
-  NAPI_ARGV_BUFFER_CAST(fuse_thread_locals_t *, l, 0);
-  NAPI_ARGV_INT32(res, 1)
-  NAPI_ARGV_BUFFER_CAST(uint32_t*, ints, 2)
-
-  populate_statvfs(ints, l->statvfs);
-  l->res = res;
-  fuse_native_semaphore_signal(&(l->sem));
-
-  return NULL;
-}
-
-NAPI_METHOD(fuse_native_signal_readdir) {
-  NAPI_ARGV(4)
-  NAPI_ARGV_BUFFER_CAST(fuse_thread_locals_t *, l, 0);
-  NAPI_ARGV_INT32(res, 1)
-
-  uint32_t stats_length;
-  uint32_t names_length;
-  napi_get_array_length(env, argv[3], &stats_length);
-  napi_get_array_length(env, argv[2], &names_length);
-
-  napi_value raw_names = argv[2];
-  napi_value raw_stats = argv[3];
-
-  if (names_length != stats_length) {
-    NAPI_FOR_EACH(raw_names, raw_name) {
-      NAPI_UTF8(name, 1024, raw_name)
-      int err = l->readdir_filler(l->buf, name, NULL, 0);
-      if (err == 1) {
-        break;
-      }
-    }
-  } else {
-    NAPI_FOR_EACH(raw_names, raw_name) {
-      NAPI_UTF8(name, 1024, raw_name)
-      napi_value raw_stat;
-      napi_get_element(env, raw_stats, i, &raw_stat);
-
-      NAPI_BUFFER_CAST(uint32_t*, stats_array, raw_stat);
-      struct stat st;
-      populate_stat(stats_array, &st);
-
-      int err = l->readdir_filler(l->buf, name, stat, 0);
-      if (err == 1) {
-        break;
-      }
-    }
-  }
-
-  l->res = res;
-  fuse_native_semaphore_signal(&(l->sem));
-
-  return NULL;
-}
-
 NAPI_METHOD(fuse_native_mount) {
   NAPI_ARGV(11)
 
@@ -646,18 +614,17 @@ NAPI_METHOD(fuse_native_mount) {
   NAPI_ARGV_BUFFER_CAST(fuse_thread_t *, ft, 2);
   napi_create_reference(env, argv[3], 1, &(ft->ctx));
 
-  napi_create_reference(env, argv[4], 1, &(ft->on_path_op));
-  napi_create_reference(env, argv[5], 1, &(ft->on_stat_op));
-  napi_create_reference(env, argv[6], 1, &(ft->on_buffer_op));
-  napi_create_reference(env, argv[7], 1, &(ft->on_xattr_op));
-  napi_create_reference(env, argv[8], 1, &(ft->on_statfs));
-  napi_create_reference(env, argv[9], 1, &(ft->on_readdir));
-  napi_create_reference(env, argv[10], 1, &(ft->on_symlink));
+  napi_ref handlers;
+  napi_create_reference(env, argv[4], 1, &handlers);
+
+  NAPI_FOR_EACH(handlers, handler) {
+    napi_create_reference(env, handler, 1, &ft->handlers[i]);
+  }
 
   ft->env = env;
 
   struct fuse_operations ops = {
-    .getattr = fuse_native_fgetattr,
+    .getattr = fuse_native_getattr,
     .fgetattr = fuse_native_fgetattr,
     .statfs = fuse_native_statfs,
     .readdir = fuse_native_readdir,
@@ -673,9 +640,7 @@ NAPI_METHOD(fuse_native_mount) {
     .listxattr = fuse_native_listxattr,
     .removexattr = fuse_native_removexattr,
     .utimens = fuse_native_utimens,
-    /*
     .init = fuse_native_init,
-    .error = fuse_native_error,
     .flush = fuse_native_flush,
     .fsync = fuse_native_fsync,
     .fsyncdir = fuse_native_fsyncdir,
@@ -692,8 +657,7 @@ NAPI_METHOD(fuse_native_mount) {
     .symlink = fuse_native_symlink,
     .mkdir = fuse_native_mkdir,
     .rmdir = fuse_native_rmdir,
-    .destroy = fuse_native_destroy,
-    */
+    .destroy = fuse_native_destroy
   };
 
   int _argc = 2;
@@ -746,14 +710,48 @@ NAPI_METHOD(fuse_native_unmount) {
 NAPI_INIT() {
   pthread_key_create(&(thread_locals_key), NULL); // TODO: add destructor
 
+  NAPI_EXPORT_SIZEOF(fuse_thread_t)
+
   NAPI_EXPORT_FUNCTION(fuse_native_mount)
   NAPI_EXPORT_FUNCTION(fuse_native_unmount)
-  NAPI_EXPORT_FUNCTION(fuse_native_signal_path)
-  NAPI_EXPORT_FUNCTION(fuse_native_signal_stat)
+
+  NAPI_EXPORT_FUNCTION(fuse_native_signal_getattr)
+  NAPI_EXPORT_FUNCTION(fuse_native_signal_init)
+  NAPI_EXPORT_FUNCTION(fuse_native_signal_error)
+  NAPI_EXPORT_FUNCTION(fuse_native_signal_access)
   NAPI_EXPORT_FUNCTION(fuse_native_signal_statfs)
-  NAPI_EXPORT_FUNCTION(fuse_native_signal_buffer)
+  NAPI_EXPORT_FUNCTION(fuse_native_signal_fgetattr)
+  NAPI_EXPORT_FUNCTION(fuse_native_signal_getattr)
+  NAPI_EXPORT_FUNCTION(fuse_native_signal_flush)
+  NAPI_EXPORT_FUNCTION(fuse_native_signal_fsync)
+  NAPI_EXPORT_FUNCTION(fuse_native_signal_fsyncdir)
   NAPI_EXPORT_FUNCTION(fuse_native_signal_readdir)
-  NAPI_EXPORT_SIZEOF(fuse_thread_t)
+  NAPI_EXPORT_FUNCTION(fuse_native_signal_truncate)
+  NAPI_EXPORT_FUNCTION(fuse_native_signal_ftruncate)
+  NAPI_EXPORT_FUNCTION(fuse_native_signal_utimens)
+  NAPI_EXPORT_FUNCTION(fuse_native_signal_readlink)
+  NAPI_EXPORT_FUNCTION(fuse_native_signal_chown)
+  NAPI_EXPORT_FUNCTION(fuse_native_signal_chmod)
+  NAPI_EXPORT_FUNCTION(fuse_native_signal_mknod)
+  NAPI_EXPORT_FUNCTION(fuse_native_signal_setxattr)
+  NAPI_EXPORT_FUNCTION(fuse_native_signal_getxattr)
+  NAPI_EXPORT_FUNCTION(fuse_native_signal_listxattr)
+  NAPI_EXPORT_FUNCTION(fuse_native_signal_removexattr)
+  NAPI_EXPORT_FUNCTION(fuse_native_signal_open)
+  NAPI_EXPORT_FUNCTION(fuse_native_signal_opendir)
+  NAPI_EXPORT_FUNCTION(fuse_native_signal_read)
+  NAPI_EXPORT_FUNCTION(fuse_native_signal_write)
+  NAPI_EXPORT_FUNCTION(fuse_native_signal_release)
+  NAPI_EXPORT_FUNCTION(fuse_native_signal_releasedir)
+  NAPI_EXPORT_FUNCTION(fuse_native_signal_create)
+  NAPI_EXPORT_FUNCTION(fuse_native_signal_unlink)
+  NAPI_EXPORT_FUNCTION(fuse_native_signal_rename)
+  NAPI_EXPORT_FUNCTION(fuse_native_signal_link)
+  NAPI_EXPORT_FUNCTION(fuse_native_signal_symlink)
+  NAPI_EXPORT_FUNCTION(fuse_native_signal_mkdir)
+  NAPI_EXPORT_FUNCTION(fuse_native_signal_rmdir)
+  NAPI_EXPORT_FUNCTION(fuse_native_signal_destroy)
+
   NAPI_EXPORT_UINT32(op_getattr)
   NAPI_EXPORT_UINT32(op_init)
   NAPI_EXPORT_UINT32(op_error)
