@@ -90,6 +90,8 @@ typedef struct {
   napi_ref on_symlink;
 
   struct fuse *fuse;
+  struct fuse_chan *ch;
+  bool mounted;
   uv_async_t async;
 } fuse_thread_t;
 
@@ -637,7 +639,7 @@ NAPI_METHOD(fuse_native_signal_readdir) {
 }
 
 NAPI_METHOD(fuse_native_mount) {
-  NAPI_ARGV(10)
+  NAPI_ARGV(11)
 
   NAPI_ARGV_UTF8(mnt, 1024, 0);
   NAPI_ARGV_UTF8(mntopts, 1024, 1);
@@ -711,6 +713,8 @@ NAPI_METHOD(fuse_native_mount) {
   struct fuse *fuse = fuse_new(ch, &args, &ops, sizeof(struct fuse_operations), ft);
 
   ft->fuse = fuse;
+  ft->ch = ch;
+  ft->mounted = true;
 
   if (fuse == NULL) {
     napi_throw_error(env, "fuse failed", "fuse failed");
@@ -723,10 +727,27 @@ NAPI_METHOD(fuse_native_mount) {
   return NULL;
 }
 
+NAPI_METHOD(fuse_native_unmount) {
+  NAPI_ARGV(2)
+  NAPI_ARGV_UTF8(mnt, 1024, 0);
+  NAPI_ARGV_BUFFER_CAST(fuse_thread_t *, ft, 1);
+
+  if (ft != NULL && ft->mounted) {
+    fuse_unmount(mnt, ft->ch);
+    printf("joining\n");
+    pthread_join(ft->thread, NULL);
+    printf("joined\n");
+  }
+  ft->mounted = false;
+
+  return NULL;
+}
+
 NAPI_INIT() {
   pthread_key_create(&(thread_locals_key), NULL); // TODO: add destructor
 
   NAPI_EXPORT_FUNCTION(fuse_native_mount)
+  NAPI_EXPORT_FUNCTION(fuse_native_unmount)
   NAPI_EXPORT_FUNCTION(fuse_native_signal_path)
   NAPI_EXPORT_FUNCTION(fuse_native_signal_stat)
   NAPI_EXPORT_FUNCTION(fuse_native_signal_statfs)
