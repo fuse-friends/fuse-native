@@ -9,115 +9,118 @@ const HAS_FOLDER_ICON = IS_OSX && fs.existsSync(OSX_FOLDER_ICON)
 
 const binding = require('node-gyp-build')(__dirname)
 const OpcodesAndDefaults = new Map([
-  [ 'init', {
+  ['init', {
     op: 0
-  } ],
-  [ 'error', {
+  }],
+  ['error', {
     op: 1
-  } ],
-  [ 'access', {
+  }],
+  ['access', {
     op: 2,
-    defaults: [ 0 ]
-  } ],
-  [ 'statfs', {
+    defaults: [0]
+  }],
+  ['statfs', {
     op: 3,
-    defaults: [ getStatfsArray() ]
-  } ],
-  [ 'fgetattr', {
+    defaults: [getStatfsArray()]
+  }],
+  ['fgetattr', {
     op: 4,
-    defaults: [ getStatArray() ]
-  } ],
-  [ 'getattr', {
+    defaults: [getStatArray()]
+  }],
+  ['getattr', {
     op: 5,
-    defaults: [ getStatArray() ]
-  } ],
-  [ 'flush', {
-    op: 6,
-  } ],
-  [ 'fsync', {
-     op: 7
-  } ],
-  [ 'fsyncdir', {
-     op: 8
-  } ],
-  [ 'readdir', {
-     op: 9
-  } ],
-  [ 'truncate', {
-     op: 10
-  } ],
-  [ 'ftruncate', {
-     op: 11
-  } ],
-  [ 'utimens', {
-     op: 12
-  } ],
-  [ 'readlink', {
-     op: 13
-  } ],
-  [ 'chown', {
-     op: 14
-  } ],
-  [ 'chmod', {
-     op: 15
-  } ],
-  [ 'mknod', {
-     op: 16
-  } ],
-  [ 'setxattr', {
-     op: 17
-  } ],
-  [ 'getxattr', {
-     op: 18
-  } ],
-  [ 'listxattr', {
-     op: 19
-  } ],
-  [ 'removexattr', {
-     op: 20
-  } ],
-  [ 'open', {
-     op: 21
-  } ],
-  [ 'opendir', {
-     op: 22
-  } ],
-  [ 'read', {
-     op: 23
-  } ],
-  [ 'write', {
-     op: 24
-  } ],
-  [ 'release', {
-     op: 25
-  } ],
-  [ 'releasedir', {
-     op: 26
-  } ],
-  [ 'create', {
-     op: 27
-  } ],
-  [ 'unlink', {
-     op: 28
-  } ],
-  [ 'rename', {
-     op: 29
-  } ],
-  [ 'link', {
-     op: 30
-  } ],
-  [ 'symlink', {
-     op: 31
-  } ],
-  [ 'mkdir', {
-     op: 32
-  } ],
-  [ 'rmdir', {
-     op: 33
-  } ],
-  [ 'destroy', {
-     op: 34
-  } ]
+    defaults: [getStatArray()]
+  }],
+  ['flush', {
+    op: 6
+  }],
+  ['fsync', {
+    op: 7
+  }],
+  ['fsyncdir', {
+    op: 8
+  }],
+  ['readdir', {
+    op: 9
+  }],
+  ['truncate', {
+    op: 10
+  }],
+  ['ftruncate', {
+    op: 11
+  }],
+  ['utimens', {
+    op: 12
+  }],
+  ['readlink', {
+    op: 13,
+    defaults: ['']
+  }],
+  ['chown', {
+    op: 14
+  }],
+  ['chmod', {
+    op: 15
+  }],
+  ['mknod', {
+    op: 16
+  }],
+  ['setxattr', {
+    op: 17
+  }],
+  ['getxattr', {
+    op: 18
+  }],
+  ['listxattr', {
+    op: 19
+  }],
+  ['removexattr', {
+    op: 20
+  }],
+  ['open', {
+    op: 21
+  }],
+  ['opendir', {
+    op: 22
+  }],
+  ['read', {
+    op: 23,
+    defaults: [0]
+  }],
+  ['write', {
+    op: 24,
+    defaults: [0]
+  }],
+  ['release', {
+    op: 25
+  }],
+  ['releasedir', {
+    op: 26
+  }],
+  ['create', {
+    op: 27
+  }],
+  ['unlink', {
+    op: 28
+  }],
+  ['rename', {
+    op: 29
+  }],
+  ['link', {
+    op: 30
+  }],
+  ['symlink', {
+    op: 31
+  }],
+  ['mkdir', {
+    op: 32
+  }],
+  ['rmdir', {
+    op: 33
+  }],
+  ['destroy', {
+    op: 34
+  }]
 ])
 
 class Fuse {
@@ -133,8 +136,8 @@ class Fuse {
 
     const implemented = [0, 1, 5]
     if (ops) {
-      for (const [name, code] of Opcodes) {
-        if (ops[name]) implemented.push(code)
+      for (const [name, { op }] of OpcodesAndDefaults) {
+        if (ops[name]) implemented.push(op)
       }
     }
     this._implemented = new Set(implemented)
@@ -189,7 +192,9 @@ class Fuse {
   // Handlers
 
   _makeHandlerArray () {
+    const self = this
     const handlers = new Array(OpcodesAndDefaults.size)
+
     for (const [name, { op, defaults }] of OpcodesAndDefaults) {
       const nativeSignal = binding[`fuse_native_signal_${name}`]
       if (!nativeSignal) continue
@@ -200,22 +205,25 @@ class Fuse {
     return handlers
 
     function makeHandler (name, op, defaults, nativeSignal) {
-      return () => {
-        const boundSignal = signal.bind(arguments[0])
-        const funcName = `_$name`
-        if (!this[funcName] || !this._implemented.has(op)) return boundSignal(-1, defaults)
-        return this[funcName].apply(null, [boundSignal, [...arguments].slice(1) ])
+      return function () {
+        const boundSignal = signal.bind(null, arguments[0])
+        const funcName = `_${name}`
+        if (!self[funcName] || !self._implemented.has(op)) return boundSignal(-1, defaults)
+        return self[funcName].apply(self, [boundSignal, ...[...arguments].slice(1)])
       }
 
-      function signal (nativeHandler, err, args) {
-        const args = [nativeHandler, err]
-        if (defaults) args.concat(defaults)
-        return nativeSignal(args)
+      function signal (nativeHandler, err, ...args) {
+        console.log('nativeHanlder:', nativeHandler, 'err:', err, 'args:', args)
+        const arr = [nativeHandler, err, ...args]
+        if (defaults && (!args || !args.length)) arr.concat(defaults)
+        console.log('signalling with arr:', arr)
+        return nativeSignal(...arr)
       }
     }
   }
 
   _init (signal) {
+    console.log('IN JS INIT')
     if (!this.ops.init) {
       signal(0)
       return
@@ -461,7 +469,8 @@ class Fuse {
 
   mount (cb) {
     const opts = this._fuseOptions()
-
+    console.log('mounting at %s with opts: %s', this.mnt, opts)
+    console.log('handlers:', this._handlers)
     fs.stat(this.mnt, (err, stat) => {
       if (err) return cb(new Error('Mountpoint does not exist'))
       if (!stat.isDirectory()) return cb(new Error('Mountpoint is not a directory'))
@@ -646,7 +655,7 @@ function setDoubleInt (arr, idx, num) {
   arr[idx + 1] = (num - arr[idx]) / 4294967296
 }
 
-function getDoubleInt(arr, idx) {
+function getDoubleInt (arr, idx) {
   arr = new Uint32Array(arr)
   var num = arr[idx + 1] * 4294967296
   num += arr[idx]
@@ -658,20 +667,17 @@ function getStatArray (stat) {
 
   ints[0] = (stat && stat.mode) || 0
   ints[1] = (stat && stat.uid) || 0
-  ints[2] = (stat && stat.gid)  || 0
-  ints[3] = (stat && stat.size)  || 0
-  ints[4] = (stat && stat.dev)  || 0
-  ints[5] = (stat && stat.nlink)  || 1
-  ints[6] = (stat && stat.ino)  || 0
-  ints[7] = (stat && stat.rdev)  || 0
-  ints[8] = (stat && stat.blksize)  || 0
-  ints[9] = (stat && stat.blocks)  || 0
+  ints[2] = (stat && stat.gid) || 0
+  ints[3] = (stat && stat.size) || 0
+  ints[4] = (stat && stat.dev) || 0
+  ints[5] = (stat && stat.nlink) || 1
+  ints[6] = (stat && stat.ino) || 0
+  ints[7] = (stat && stat.rdev) || 0
+  ints[8] = (stat && stat.blksize) || 0
+  ints[9] = (stat && stat.blocks) || 0
   setDoubleInt(ints, 10, (stat && stat.atim) || Date.now())
   setDoubleInt(ints, 12, (stat && stat.atim) || Date.now())
   setDoubleInt(ints, 14, (stat && stat.atim) || Date.now())
 
   return ints
 }
-
-function noop () {}
-function call (cb) { cb() }

@@ -69,16 +69,3 @@ process.on('SIGINT', function () {
     }
   })
 })
-
-function emptyStat (mode) {
-  return {
-    mtime: new Date(),
-    atime: new Date(),
-    ctime: new Date(),
-    nlink: 1,
-    size: 100,
-    mode: mode,
-    uid: process.getuid ? process.getuid() : 0,
-    gid: process.getgid ? process.getgid() : 0
-  }
-}

@@ -5,6 +5,7 @@
   "main": "index.js",
   "scripts": {
     "install": "node-gyp-build",
+    "test": "standard && test/*.js",
     "prebuild": "prebuildify -a --strip",
     "prebuild-ia32": "prebuildify -a --strip --arch=ia32"
   },
@@ -14,7 +15,11 @@
     "napi-macros": "^2.0.0",
     "node-gyp-build": "^3.2.2"
   },
-  "devDependencies": {},
+  "devDependencies": {
+    "concat-stream": "^2.0.0",
+    "standard": "^13.1.0",
+    "tape": "^4.11.0"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/fuse-friends/fuse-native.git"

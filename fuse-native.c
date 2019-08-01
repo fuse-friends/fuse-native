@@ -39,29 +39,36 @@
   fuse_native_semaphore_wait(&(l->sem));                    \
   return l->res;
 
-#define FUSE_METHOD(name, callbackArgs, signalArgs, signature, callBlk, callbackBlk, signalBlk)                          \
-  static void fuse_native_dispatch_##name (uv_async_t* handle, int status, fuse_thread_locals_t* l, fuse_thread_t* ft) { \
-    uint32_t op = op_##name;                                                                                             \
-    FUSE_NATIVE_CALLBACK(ft->handlers[op], {                                                                             \
-      napi_value argv[callbackArgs + 2];                                                                                         \
-      napi_create_external_buffer(env, sizeof(fuse_thread_locals_t), l, &fin, NULL, &(argv[0]));                         \
-      napi_create_uint32(env, l->op, &(argv[1]));                                                                        \
-      callbackBlk                                                                                                        \
-      NAPI_MAKE_CALLBACK(env, NULL, ctx, callback, callbackArgs + 2, argv, NULL)                                                 \
-    })                                                                                                                   \
-  }                                                                                                                      \
-  NAPI_METHOD(fuse_native_signal_##name) {                                                                            \
-    NAPI_ARGV(signalArgs + 2)                                                                                            \
-    NAPI_ARGV_BUFFER_CAST(fuse_thread_locals_t *, l, 0);                                                                 \
-    NAPI_ARGV_INT32(res, 1);                                                                                             \
-    signalBlk                                                                                                            \
-    l->res = res;                                                                                                        \
-    fuse_native_semaphore_signal(&(l->sem));                                                                             \
-    return NULL;                                                                                                         \
-  }                                                                                                                      \
-  static int fuse_native_##name signature {                                                                           \
-    FUSE_NATIVE_HANDLER(name, callBlk)                                   \
-  }                                                                                                                      \
+#define FUSE_METHOD(name, callbackArgs, signalArgs, signature, callBlk, callbackBlk, signalBlk)\
+  static void fuse_native_dispatch_##name (uv_async_t* handle, int status, fuse_thread_locals_t* l, fuse_thread_t* ft) {\
+    printf("at beginning of fuse_native_dispatch_%s\n", #name);\
+    uint32_t op = op_##name;\
+    printf("op here: %i\n", op);\
+    printf("handler here: %zu\n", ft->handlers[op]);\
+    printf("in fuse_native_dispatch, op: %i, handler: %zu\n", op, ft->handlers[op]);\
+    FUSE_NATIVE_CALLBACK(ft->handlers[op], {\
+      napi_value argv[callbackArgs + 2];\
+      napi_create_external_buffer(env, sizeof(fuse_thread_locals_t), l, &fin, NULL, &(argv[0]));\
+      napi_create_uint32(env, l->op, &(argv[1]));\
+      callbackBlk\
+      printf("in fuse_native_callback, calling callback for %s\n", #name);\
+      NAPI_MAKE_CALLBACK(env, NULL, ctx, callback, callbackArgs + 2, argv, NULL)\
+    })\
+  }\
+  NAPI_METHOD(fuse_native_signal_##name) {\
+    NAPI_ARGV(signalArgs + 2)\
+    NAPI_ARGV_BUFFER_CAST(fuse_thread_locals_t *, l, 0);\
+    NAPI_ARGV_INT32(res, 1);\
+    signalBlk\
+    l->res = res;\
+    printf("in _fuse_native_signal_%s, signalling semaphore\n", #name);\
+    fuse_native_semaphore_signal(&(l->sem));\
+    return NULL;\
+  }\
+  static int fuse_native_##name signature {\
+    printf("in fuse_native_%s\n", #name);\
+    FUSE_NATIVE_HANDLER(name, callBlk)\
+  }
 
 // Opcodes
 
@@ -110,7 +117,7 @@ typedef struct {
   napi_ref ctx;
 
   // Operation handlers
-  napi_ref handlers[34];
+  napi_ref handlers[35];
 
   struct fuse *fuse;
   struct fuse_chan *ch;
@@ -537,7 +544,13 @@ FUSE_METHOD(removexattr, 2, 0, (const char *path, const char *name), {
   },
   {})
 
-FUSE_METHOD(init, 0, 0, (struct fuse_conn_info *conn, struct fuse_config *cfg), {}, {}, {})
+FUSE_METHOD(init, 0, 0, (struct fuse_conn_info *conn, struct fuse_config *cfg), {
+    printf("in fuse_native_init\n");
+  }, {
+    printf("in fuse_native_init_callback\n");
+  }, {
+    printf("in fuse_native_init_signal\n");
+  })
 
 FUSE_METHOD(error, 0, 0, (), {}, {}, {})
 
@@ -713,6 +726,8 @@ static void fuse_native_dispatch (uv_async_t* handle, int status) {
   fuse_thread_locals_t *l = (fuse_thread_locals_t *) handle->data;
   fuse_thread_t *ft = l->fuse;
 
+  printf("dispatching %i\n", l->op);
+
   // TODO: Either use a function pointer (like ft->handlers[op]) or generate with a macro.
   switch (l->op) {
     case (op_init): return fuse_native_dispatch_init(handle, status, l, ft);
@@ -799,10 +814,9 @@ NAPI_METHOD(fuse_native_mount) {
   NAPI_ARGV_BUFFER_CAST(fuse_thread_t *, ft, 2);
   napi_create_reference(env, argv[3], 1, &(ft->ctx));
 
-  napi_ref handlers;
-  napi_create_reference(env, argv[4], 1, &handlers);
-
+  napi_value handlers = argv[4];
   NAPI_FOR_EACH(handlers, handler) {
+    printf("creating reference for handler: %d\n", i);
     napi_create_reference(env, handler, 1, &ft->handlers[i]);
   }
 
@@ -845,7 +859,7 @@ NAPI_METHOD(fuse_native_mount) {
     .destroy = fuse_native_destroy
   };
 
-  int _argc = 2;
+  int _argc = (strcmp(mntopts, "-o") <= 0) ? 1 : 2;
   char *_argv[] = {
     (char *) "fuse_bindings_dummy",
     (char *) mntopts
