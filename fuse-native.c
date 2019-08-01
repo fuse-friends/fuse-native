@@ -649,8 +649,12 @@ FUSE_METHOD(readlink, 1, 1, (const char *path, char *linkname, size_t len), {
   }, {
     napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
   }, {
-    NAPI_ARGV_UTF8(linkname, 1024, 2)
-    strncpy(linkname, l->linkname, l->len);
+    printf("right before napi_argv_utf8\n");
+    NAPI_ARGV_UTF8(linkname, l->len, 2)
+    printf("right after napi_argv_utf8, len: %i, linkname: %s \n", l->len, linkname);
+    strncpy(l->linkname, linkname, l->len);
+    printf("after copy: l->linkname: %s\n", l->linkname);
+    ret = 0;
   })
 
 FUSE_METHOD(chown, 3, 0, (const char *path, uid_t uid, gid_t gid), {

@@ -12,17 +12,18 @@ tape('read', function (t) {
     force: true,
     readdir: function (path, cb) {
       if (path === '/') return cb(null, ['test'])
-      return cb(fuse.ENOENT)
+      return cb(Fuse.ENOENT)
     },
     getattr: function (path, cb) {
       if (path === '/') return cb(null, stat({ mode: 'dir', size: 4096 }))
       if (path === '/test') return cb(null, stat({ mode: 'file', size: 11 }))
-      return cb(fuse.ENOENT)
+      return cb(Fuse.ENOENT)
     },
     open: function (path, flags, cb) {
       cb(0, 42)
     },
     release: function (path, fd, cb) {
+
       t.same(fd, 42, 'fd was passed to release')
       cb(0)
     },
@@ -35,7 +36,6 @@ tape('read', function (t) {
   }
 
   const fuse = new Fuse(mnt, ops, { debug: true })
-
   fuse.mount(function (err) {
     t.error(err, 'no error')
 
@@ -53,7 +53,7 @@ tape('read', function (t) {
           fs.createReadStream(path.join(mnt, 'test'), { start: 6, end: 10 }).pipe(concat(function (buf) {
             t.same(buf, new Buffer('world'), 'partial read file + start offset')
 
-            fuse.unmount(mnt, function () {
+            fuse.unmount(function () {
               t.end()
             })
           }))

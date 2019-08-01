@@ -270,6 +270,7 @@ class Fuse {
       return
     }
     this.ops.getattr(path, (err, stat) => {
+      console.log('USER GETATT RESULT, path:', path, 'err:', err, 'stat:', stat)
       if (err) return signal(err, getStatArray())
       return signal(0, getStatArray(stat))
     })
@@ -298,7 +299,6 @@ class Fuse {
 
   _open (signal, path, flags) {
     this.ops.open(path, flags, (err, fd) => {
-      console.log('SIGNALLING WITH FD:', fd)
       return signal(err, fd)
     })
   }
@@ -480,9 +480,7 @@ class Fuse {
   mount (cb) {
     const opts = this._fuseOptions()
     console.log('mounting at %s with opts: %s', this.mnt, opts)
-    console.log('handlers:', this._handlers)
     const implemented = this._getImplementedArray()
-    console.log('implemented:', implemented)
     fs.stat(this.mnt, (err, stat) => {
       if (err) return cb(new Error('Mountpoint does not exist'))
       if (!stat.isDirectory()) return cb(new Error('Mountpoint is not a directory'))
