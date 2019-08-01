@@ -294,10 +294,11 @@ FUSE_METHOD(opendir, 0, 0, (const char *path, struct fuse_file_info *info), {
     l->info = info;
   },
   {
+    napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
     if (l->info != NULL) {
-      napi_create_uint32(env, l->info->fh, &(argv[2]));
+      napi_create_uint32(env, l->info->fh, &(argv[3]));
     } else {
-      napi_create_uint32(env, 0, &(argv[2]));
+      napi_create_uint32(env, 0, &(argv[3]));
     }
   },
   {
@@ -329,8 +330,9 @@ FUSE_METHOD(utimens, 2, 0, (const char *path, const struct timespec tv[2]), {
     from_timespec(&tv[1], l->mtim);
   },
   {
-    napi_create_external_arraybuffer(env, l->atim, 2 * sizeof(uint32_t), &fin, NULL, &argv[2]);
-    napi_create_external_arraybuffer(env, l->mtim, 2 * sizeof(uint32_t), &fin, NULL, &argv[3]);
+    napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
+    napi_create_external_arraybuffer(env, l->atim, 2 * sizeof(uint32_t), &fin, NULL, &argv[3]);
+    napi_create_external_arraybuffer(env, l->mtim, 2 * sizeof(uint32_t), &fin, NULL, &argv[4]);
   },
   {})
 

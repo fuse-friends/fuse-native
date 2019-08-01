@@ -204,7 +204,7 @@ class Fuse {
         const boundSignal = signal.bind(arguments[0])
         const funcName = `_$name`
         if (!this[funcName] || !this._implemented.has(op)) return boundSignal(-1, defaults)
-        this[funcName].apply(null, [boundSignal, [...arguments].slice(1) ])
+        return this[funcName].apply(null, [boundSignal, [...arguments].slice(1) ])
       }
 
       function signal (nativeHandler, err, args) {
@@ -216,75 +216,22 @@ class Fuse {
   }
 
   _init (signal) {
-    if (!this.ops.init) return signal(0)
+    if (!this.ops.init) {
+      signal(0)
+      return
+    }
     this.ops.init(err => {
       return signal(err)
     })
   }
 
   _error (signal) {
-    if (!this.ops.error) return signal(0)
+    if (!this.ops.error) {
+      signal(0)
+      return
+    }
     this.ops.error(err => {
       return signal(err)
-    })
-  }
-
-  _getattr (signal, path) {
-    if (!this.ops.getattr) {
-      if (path !== '/') return signal(Fuse.EPERM)
-      return signal(0, getStatArray({ mtime: new Date(0), atime: new Date(0), ctime: new Date(0), mode: 16877, size: 4096 }))
-    }
-    this.ops.getattr(path, (err, stat) => {
-      if (err) return signal(err)
-      return signal(0, getStatArray(stat))
-    })
-  }
-
-  _fgetattr (signal, path, fd) {
-
-  }
-
-  _setxattr (signal, path, name, value, size, position, flags) {
-    
-  }
-
-  _getxattr (signal, path, name, value, size, position) {
-    
-  }
-
-  _listxattr (signal, path, list, size) {
-    
-  }
-
-  _open (signal, path) {
-
-  }
-
-  _create (signal, path, mode) {
-    
-  }
-
-  _read (signal, path, fd, buf, len, offset) {
-    
-  }
-
-  _write (signal, path, fd, buf, len, offset) {
-   
-  }
-
-  _release (signal, path, fd) {
-    
-  }
-
-  _releasedir (signal, path, fd) {
-    
-  }
-
-  _readdir (signal, path) {
-    this.ops.readdir(path, (err, names, stats) => {
-      if (err) return signal(err)
-      if (stats) stats = stats.map(getStatArray)
-      return signal(null, [names, stats || []])
     })
   }
 
@@ -296,106 +243,218 @@ class Fuse {
     })
   }
 
-  _fd_op (handle, op, path, fd, buf, len, offset) {
-    const signalFunc = binding.fuse_native_signal_buffer.bind(binding)
-    if (!this._implemented.has(op)) return this._signal(signalFunc, [handle, -1])
-
-    const cb = (bytesProcessed) => {
-      return this._signal(signalFunc, [handle, bytesProcessed || 0])
+  _getattr (signal, path) {
+    if (!this.ops.getattr) {
+      if (path !== '/') {
+        signal(Fuse.EPERM)
+      } else {
+        signal(0, getStatArray({ mtime: new Date(0), atime: new Date(0), ctime: new Date(0), mode: 16877, size: 4096 }))
+      }
+      return
     }
-
-    switch (op) {
-      case (binding.op_read):
-        this.ops.read(path, fd, buf, len, offset, cb)
-        break
-      case (binding.op_write):
-        this.ops.write(path, fd, buf, len, offset, cb)
-        break
-      case(binding.op_release):
-        this.ops.release(path, fd, cb)
-        break
-      case(binding.op_releasedir):
-        this.ops.releasedir(path, fd, cb)
-        break
-      default:
-        return this._signal(signalFunc, [handle, 0])
-    }
+    this.ops.getattr(path, (err, stat) => {
+      if (err) return signal(err)
+      return signal(0, getStatArray(stat))
+    })
   }
 
-  on_stat_op (handle, op, path, fd) {
-    const signalFunc = binding.fuse_native_signal_stat.bind(binding)
-    if (!this._implemented.has(op)) return this._signal(signalFunc, [handle, -1, getStatArray()])
-
-    const cb = (err, stat) => {
-      const arr = getStatArray(stat)
-      return this._signal(signalFunc, [handle, err, arr])
+  _fgetattr (signal, path, fd) {
+    if (!this.ops.fgetattr) {
+      if (path !== '/') {
+        signal(Fuse.EPERM)
+      } else {
+        signal(0, getStatArray({ mtime: new Date(0), atime: new Date(0), ctime: new Date(0), mode: 16877, size: 4096 }))
+      }
+      return
     }
-
-    switch (op) {
-      case (binding.op_getattr):
-        this.ops.getattr(path, cb)
-        break
-      case (binding.op_fgetattr):
-        this.ops.fgetattr(path, fd, cb)
-      default:
-        return this._signal(signalFunc, [handle, -1, getStatArray()])
-    }
+    this.ops.getattr(path, (err, stat) => {
+      if (err) return signal(err)
+      return signal(0, getStatArray(stat))
+    })
   }
 
-  on_path_op (handle, op, path, mode, flags, atim, mtim) {
-    const signalFunc = binding.fuse_native_signal_path.bind(binding)
-    if (!this._implemented.has(op)) return this._signal(signalFunc, [handle, -1, 0])
-
-    const cb = (err, fd) => {
-      return this._signal(signalFunc, [handle, err, fd || 0])
-    }
-
-    switch (op) {
-      case (binding.op_open):
-        this.ops.open(path, flags, cb)
-        break
-      case (binding.op_create):
-        this.ops.create(path, mode, cb)
-        break
-      case (binding.op_access):
-        this.ops.access(path, mode, cb)
-        break
-      case (binding.op_utimens):
-        this.ops.utimens(path, getDoubleInt(atim, 0), getDoubleInt(mtim, 0), cb)
-        break
-      default:
-        return this._signal(signalFunc, [handle, -1, 0])
-    }
+  _access (signal, path, mode) {
+    this.ops.access(path, mode, err => {
+      return signal(err)
+    })
   }
 
-  on_xattr_op (handle, op, path, name, value, list, size, flags, position) {
-    const signalFunc = binding.fuse_native_signal_xattr.bind(binding)
-    if (!this._implemented.has(op)) return this._signal(signalFunc, [handle, -1, 0])
-
-    const cb = err => {
-      return this._signal(signalFunc, [handle, -1])
-    }
-
-    switch (op) {
-      case (binding.op_setxattr):
-        this.ops.setxattr(path, name, value, size, position || 0, flags, cb)
-        break
-      case (binding.op_getxattr):
-        this.ops.getxattr(path, name, value, size, position || 0, cb)
-        break
-      case (binding.op_listxattr):
-        this.ops.listxattr(path, list, size, cb)
-        break
-      case (binding.op_removexattr):
-        this.ops.removexattr(path, name, cb)
-        break
-      default:
-        return this._signal(signalFunc, [handle, -1])
-    }
+  _open (signal, path) {
+    this.ops.open(path, (err, fd) => {
+      return signal(err, fd)
+    })
   }
 
-  on_symlink (path, target) {
+  _opendir (signal, path) {
+    this.ops.opendir(path, (err, fd) => {
+      return signal(err, fd)
+    })
+  }
 
+  _create (signal, path, mode) {
+    this.ops.create(path, mode, (err, fd) => {
+      return signal(err, fd)
+    })
+  }
+
+  _utimens (signal, path, atim, mtim) {
+    atim = getDoubleInt(atim, 0)
+    mtim = getDoubleInt(mtim, 0)
+    this.ops.utimens(path, atim, mtim, err => {
+      return signal(err)
+    })
+  }
+
+  _release (signal, path, fd) {
+    this.ops.release(path, fd, err => {
+      return signal(err)
+    })
+  }
+
+  _releasedir (signal, path, fd) {
+    this.ops.releasedir(path, fd, err => {
+      return signal(err)
+    })
+  }
+
+  _read (signal, path, fd, buf, len, offset) {
+    this.ops.read(path, fd, buf, len, offset, (err, bytesRead) => {
+      return signal(err, bytesRead)
+    })
+  }
+
+  _write (signal, path, fd, buf, len, offset) {
+    this.ops.write(path, fd, buf, len, offset, (err, bytesWritten) => {
+      return signal(err, bytesWritten)
+    })
+  }
+
+  _readdir (signal, path) {
+    this.ops.readdir(path, (err, names, stats) => {
+      if (err) return signal(err)
+      if (stats) stats = stats.map(getStatArray)
+      return signal(null, [names, stats || []])
+    })
+  }
+
+  _setxattr (signal, path, name, value, size, position, flags) {
+    this.ops.setxattr(path, name, value, size, position, flags, err => {
+      return signal(err)
+    })
+  }
+
+  _getxattr (signal, path, name, value, size, position) {
+    this.ops.getxattr(path, name, value, size, position, err => {
+      return signal(err)
+    })
+  }
+
+  _listxattr (signal, path, list, size) {
+    this.ops.listxattr(path, list, size, err => {
+      return signal(err)
+    })
+  }
+
+  _removexattr (signal, path, name) {
+    this.ops.removexattr(path, name, err => {
+      return signal(err)
+    })
+  }
+
+  _flush (signal, path, datasync, fd) {
+    this.ops.flush(path, datasync, fd, err => {
+      return signal(err)
+    })
+  }
+
+  _fsync (signal, path, datasync, fd) {
+    this.ops.fsync(path, datasync, fd, err => {
+      return signal(err)
+    })
+  }
+
+  _fsyncdir (signal, path, datasync, fd) {
+    this.ops.fsyncdir(path, datasync, fd, err => {
+      return signal(err)
+    })
+  }
+
+  _truncate (signal, path, size) {
+    this.ops.truncate(path, size, err => {
+      return signal(err)
+    })
+  }
+
+  _ftruncate (signal, path, size, fd) {
+    this.ops.ftruncate(path, size, fd, err => {
+      return signal(err)
+    })
+  }
+
+  _readlink (signal, path) {
+    this.ops.readlink(path, (err, linkname) => {
+      return signal(err, linkname)
+    })
+  }
+
+  _chown (signal, path, uid, gid) {
+    this.ops.chown(path, uid, gid, err => {
+      return signal(err)
+    })
+  }
+
+  _chmod (signal, path, mode) {
+    this.ops.chmod(path, mode, err => {
+      return signal(err)
+    })
+  }
+
+  _mknod (signal, path, mode, dev) {
+    this.ops.mknod(path, mode, dev, err => {
+      return signal(err)
+    })
+  }
+
+  _unlink (signal, path) {
+    this.ops.unlink(path, err => {
+      return signal(err)
+    })
+  }
+
+  _rename (signal, src, dest, flags) {
+    this.ops.rename(src, dest, flags, err => {
+      return signal(err)
+    })
+  }
+
+  _link (signal, src, dest) {
+    this.ops.link(src, dest, err => {
+      return signal(err)
+    })
+  }
+
+  _symlink (signal, src, dest) {
+    this.ops.symlink(src, dest, err => {
+      return signal(err)
+    })
+  }
+
+  _mkdir (signal, path, mode) {
+    this.ops.mkdir(path, mode, err => {
+      return signal(err)
+    })
+  }
+
+  _rmdir (signal, path) {
+    this.ops.rmdir(path, err => {
+      return signal(err)
+    })
+  }
+
+  _destroy (signal) {
+    this.ops.destroy(err => {
+      return signal(err)
+    })
   }
 
   // Public API
