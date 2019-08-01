@@ -78,10 +78,12 @@ const OpcodesAndDefaults = new Map([
     op: 20
   }],
   ['open', {
-    op: 21
+    op: 21,
+    defaults: [0]
   }],
   ['opendir', {
-    op: 22
+    op: 22,
+    defaults: [0]
   }],
   ['read', {
     op: 23,
@@ -146,6 +148,14 @@ class Fuse {
     this._sync = true
   }
 
+  _getImplementedArray () {
+    const implemented = new Uint32Array(35)
+    for (const impl of [...this._implemented]) {
+      implemented[impl] = 1
+    }
+    return implemented
+  }
+
   _fuseOptions () {
     const options = []
 
@@ -208,8 +218,8 @@ class Fuse {
       return function () {
         const boundSignal = signal.bind(null, arguments[0])
         const funcName = `_${name}`
-        if (!self[funcName] || !self._implemented.has(op)) return boundSignal(-1, defaults)
-        return self[funcName].apply(self, [boundSignal, ...[...arguments].slice(1)])
+        if (!self[funcName] || !self._implemented.has(op)) return boundSignal(-1, ...defaults)
+        return self[funcName].apply(self, [boundSignal, ...[...arguments].slice(2)])
       }
 
       function signal (nativeHandler, err, ...args) {
@@ -223,7 +233,6 @@ class Fuse {
   }
 
   _init (signal) {
-    console.log('IN JS INIT')
     if (!this.ops.init) {
       signal(0)
       return
@@ -261,7 +270,7 @@ class Fuse {
       return
     }
     this.ops.getattr(path, (err, stat) => {
-      if (err) return signal(err)
+      if (err) return signal(err, getStatArray())
       return signal(0, getStatArray(stat))
     })
   }
@@ -287,14 +296,15 @@ class Fuse {
     })
   }
 
-  _open (signal, path) {
-    this.ops.open(path, (err, fd) => {
+  _open (signal, path, flags) {
+    this.ops.open(path, flags, (err, fd) => {
+      console.log('SIGNALLING WITH FD:', fd)
       return signal(err, fd)
     })
   }
 
-  _opendir (signal, path) {
-    this.ops.opendir(path, (err, fd) => {
+  _opendir (signal, path, flags) {
+    this.ops.opendir(path, flags, (err, fd) => {
       return signal(err, fd)
     })
   }
@@ -341,7 +351,7 @@ class Fuse {
     this.ops.readdir(path, (err, names, stats) => {
       if (err) return signal(err)
       if (stats) stats = stats.map(getStatArray)
-      return signal(null, [names, stats || []])
+      return signal(0, names, stats || [])
     })
   }
 
@@ -471,6 +481,8 @@ class Fuse {
     const opts = this._fuseOptions()
     console.log('mounting at %s with opts: %s', this.mnt, opts)
     console.log('handlers:', this._handlers)
+    const implemented = this._getImplementedArray()
+    console.log('implemented:', implemented)
     fs.stat(this.mnt, (err, stat) => {
       if (err) return cb(new Error('Mountpoint does not exist'))
       if (!stat.isDirectory()) return cb(new Error('Mountpoint is not a directory'))
@@ -478,7 +490,7 @@ class Fuse {
         if (parent && parent.dev !== stat.dev) return cb(new Error('Mountpoint in use'))
         try {
           // TODO: asyncify
-          binding.fuse_native_mount(this.mnt, opts, this._thread, this, this._handlers)
+          binding.fuse_native_mount(this.mnt, opts, this._thread, this, this._handlers, implemented)
         } catch (err) {
           return cb(err)
         }
