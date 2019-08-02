@@ -223,10 +223,8 @@ class Fuse {
       }
 
       function signal (nativeHandler, err, ...args) {
-        console.log('nativeHanlder:', nativeHandler, 'err:', err, 'args:', args)
         const arr = [nativeHandler, err, ...args]
         if (defaults && (!args || !args.length)) arr.concat(defaults)
-        console.log('signalling with arr:', arr)
         return nativeSignal(...arr)
       }
     }
@@ -270,7 +268,6 @@ class Fuse {
       return
     }
     this.ops.getattr(path, (err, stat) => {
-      console.log('USER GETATT RESULT, path:', path, 'err:', err, 'stat:', stat)
       if (err) return signal(err, getStatArray())
       return signal(0, getStatArray(stat))
     })
@@ -479,7 +476,6 @@ class Fuse {
 
   mount (cb) {
     const opts = this._fuseOptions()
-    console.log('mounting at %s with opts: %s', this.mnt, opts)
     const implemented = this._getImplementedArray()
     fs.stat(this.mnt, (err, stat) => {
       if (err) return cb(new Error('Mountpoint does not exist'))

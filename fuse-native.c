@@ -18,32 +18,22 @@
 #include <pthread.h>
 
 #define FUSE_NATIVE_CALLBACK(fn, blk)\
-  printf("in fuse_native_callback, ft: %zu\n", ft);  \
   napi_env env = ft->env;\
-  printf("0\n");\
   napi_handle_scope scope;\
-printf("1\n");\
   napi_open_handle_scope(env, &scope);\
-printf("2\n");\
   napi_value ctx;\
-printf("3\n");\
   napi_get_reference_value(env, ft->ctx, &ctx);\
-printf("4\n");\
   napi_value callback;\
   napi_get_reference_value(env, fn, &callback);\
-  printf("in fuse_native_callback, entering blk\n");\
   blk\
-  printf("in fuse_native_callback, exiting blk\n");\
   napi_close_handle_scope(env, scope);
 
 #define FUSE_NATIVE_HANDLER(name, blk)\
   struct fuse_context *ctx = fuse_get_context();\
   fuse_thread_t *ft = (fuse_thread_t *) ctx->private_data;\
   fuse_thread_locals_t *l = get_thread_locals();\
-  printf("1, in fuse_native_handler in thread: %d, l->fuse: %zu, ft: %zu\n", pthread_self(), l->fuse, ft); \
   l->fuse = ft;\
   l->op = op_##name;\
-  printf("2, in fuse_native_handler in thread: %d, l->fuse: %zu\n", pthread_self(), l->fuse); \
   blk\
   uv_async_send(&(l->async));\
   fuse_native_semaphore_wait(&(l->sem));\
@@ -51,16 +41,12 @@ printf("4\n");\
 
 #define FUSE_METHOD(name, callbackArgs, signalArgs, signature, callBlk, callbackBlk, signalBlk)\
   static void fuse_native_dispatch_##name (uv_async_t* handle, int status, fuse_thread_locals_t* l, fuse_thread_t* ft) {\
-    printf("at beginning of fuse_native_dispatch_%s\n", #name);\
     uint32_t op = op_##name;\
-    printf("op here: %i\n", op);\
-    printf("in fuse_native_dispatch, op: %i\n", op); \
     FUSE_NATIVE_CALLBACK(ft->handlers[op], {\
       napi_value argv[callbackArgs + 2];\
       napi_create_external_buffer(env, sizeof(fuse_thread_locals_t), l, &fin, NULL, &(argv[0]));\
       napi_create_uint32(env, l->op, &(argv[1]));\
       callbackBlk\
-      printf("in fuse_native_callback, calling callback for %s\n", #name);\
       NAPI_MAKE_CALLBACK(env, NULL, ctx, callback, callbackArgs + 2, argv, NULL)\
     })\
   }\
@@ -71,13 +57,10 @@ printf("4\n");\
     int ret = NULL;\
     signalBlk\
     l->res = ret ? ret : res;\
-    printf("in _fuse_native_signal_%s, signalling semaphore\n", #name);\
     fuse_native_semaphore_signal(&(l->sem));\
-    printf("fuse_native_signal_%s returning %zu\n", #name, ret);\
     return ret;\
   }\
   static int fuse_native_##name signature {\
-    printf("in fuse_native_%s\n", #name);\
     FUSE_NATIVE_HANDLER(name, callBlk)\
   }
 
@@ -256,11 +239,8 @@ FUSE_METHOD(getattr, 1, 1, (const char *path, struct stat *stat, struct fuse_fil
     napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
   },
   {
-    printf("right before getattr buffer cast\n");
     NAPI_ARGV_BUFFER_CAST(uint32_t*, ints, 2)
-    printf("populating stat\n");
     populate_stat(ints, l->stat);
-    printf("populated stat\n");
   })
 
 FUSE_METHOD(fgetattr, 2, 1, (const char *path, struct stat *stat, struct fuse_file_info *info), {
@@ -563,11 +543,8 @@ FUSE_METHOD(removexattr, 2, 0, (const char *path, const char *name), {
   {})
 
 FUSE_METHOD(init, 0, 0, (struct fuse_conn_info *conn, struct fuse_config *cfg), {
-    printf("in fuse_native_init\n");
   }, {
-    printf("in fuse_native_init_callback\n");
   }, {
-    printf("in fuse_native_signal_init, l->fuse: %zu\n", l->fuse);
     ret = (int) l->fuse;
   })
 
@@ -649,11 +626,8 @@ FUSE_METHOD(readlink, 1, 1, (const char *path, char *linkname, size_t len), {
   }, {
     napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
   }, {
-    printf("right before napi_argv_utf8\n");
     NAPI_ARGV_UTF8(linkname, l->len, 2)
-    printf("right after napi_argv_utf8, len: %i, linkname: %s \n", l->len, linkname);
     strncpy(l->linkname, linkname, l->len);
-    printf("after copy: l->linkname: %s\n", l->linkname);
     ret = 0;
   })
 
@@ -748,8 +722,6 @@ FUSE_METHOD(destroy, 0, 0, (void *private_data), {}, {}, {})
 static void fuse_native_dispatch (uv_async_t* handle, int status) {
   fuse_thread_locals_t *l = (fuse_thread_locals_t *) handle->data;
   fuse_thread_t *ft = l->fuse;
-
-  printf("dispatching %i, ft here: %zu\n", l->op, ft);
 
   // TODO: Either use a function pointer (like ft->handlers[op]) or generate with a macro.
   switch (l->op) {
