@@ -60,7 +60,7 @@ fuse.mount(err => {
   console.log('filesystem mounted on ' + fuse.mnt)
 })
 
-process.on('SIGINT', function () {
+process.once('SIGINT', function () {
   fuse.unmount(err => {
     if (err) {
       console.log('filesystem at ' + fuse.mnt + ' not unmounted', err)

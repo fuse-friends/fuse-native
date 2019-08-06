@@ -10,7 +10,8 @@
     ],
     "sources": [
       "fuse-native.c"
-    ]
+    ],
+    "cflags": ["-rdynamic"]
   }, {
     "target_name": "postinstall",
     "type": "none",

@@ -1,26 +1,31 @@
 var mnt = require('./fixtures/mnt')
-var fuse = require('../')
 var tape = require('tape')
 
+var Fuse = require('../')
+
 tape('mount', function (t) {
-  fuse.mount(mnt, { force: true }, function (err) {
+  const fuse = new Fuse(mnt, {}, { force: true })
+  fuse.mount(function (err) {
     t.error(err, 'no error')
     t.ok(true, 'works')
-    fuse.unmount(mnt, function () {
+    fuse.unmount(function () {
       t.end()
     })
   })
 })
 
 tape('mount + unmount + mount', function (t) {
-  fuse.mount(mnt, { force: true }, function (err) {
+  const fuse1 = new Fuse(mnt, {}, { force: true, debug: false })
+  const fuse2 = new Fuse(mnt, {}, { force: true, debug: false })
+
+  fuse1.mount(function (err) {
     t.error(err, 'no error')
     t.ok(true, 'works')
-    fuse.unmount(mnt, function () {
-      fuse.mount(mnt, { force: true }, function (err) {
+    fuse1.unmount(function () {
+      fuse2.mount(function (err) {
         t.error(err, 'no error')
         t.ok(true, 'works')
-        fuse.unmount(mnt, function () {
+        fuse2.unmount(function () {
           t.end()
         })
       })
@@ -29,14 +34,16 @@ tape('mount + unmount + mount', function (t) {
 })
 
 tape('mnt point must exist', function (t) {
-  fuse.mount(mnt + '.does-not-exist', {}, function (err) {
+  const fuse = new Fuse('.does-not-exist', {}, { debug: false })
+  fuse.mount(function (err) {
     t.ok(err, 'had error')
     t.end()
   })
 })
 
 tape('mnt point must be directory', function (t) {
-  fuse.mount(__filename, {}, function (err) {
+  const fuse = new Fuse(__filename, {}, { debug: false })
+  fuse.mount(function (err) {
     t.ok(err, 'had error')
     t.end()
   })

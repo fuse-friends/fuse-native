@@ -5,15 +5,17 @@
   "main": "index.js",
   "scripts": {
     "install": "node-gyp-build",
-    "test": "standard && test/*.js",
+    "test": "tape test/*.js",
     "prebuild": "prebuildify -a --strip",
     "prebuild-ia32": "prebuildify -a --strip --arch=ia32"
   },
   "gypfile": true,
   "dependencies": {
     "fuse-shared-library": "^1.0.1",
+    "nanoresource": "^1.2.0",
     "napi-macros": "^2.0.0",
-    "node-gyp-build": "^3.2.2"
+    "node-gyp-build": "^3.2.2",
+    "why-is-node-running": "^2.1.0"
   },
   "devDependencies": {
     "concat-stream": "^2.0.0",

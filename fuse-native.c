@@ -1,16 +1,17 @@
 #define FUSE_USE_VERSION 29
 
-#include "semaphore.h"
-
 #include <uv.h>
 #include <node_api.h>
 #include <napi-macros.h>
 
+#include <string.h>
 #include <stdio.h>
+
 #include <stdlib.h>
 
 #include <fuse.h>
 #include <fuse_opt.h>
+#include <fuse_common.h>
 #include <fuse_lowlevel.h>
 
 #include <unistd.h>
@@ -29,14 +30,11 @@
   napi_close_handle_scope(env, scope);
 
 #define FUSE_NATIVE_HANDLER(name, blk)\
-  struct fuse_context *ctx = fuse_get_context();\
-  fuse_thread_t *ft = (fuse_thread_t *) ctx->private_data;\
   fuse_thread_locals_t *l = get_thread_locals();\
-  l->fuse = ft;\
   l->op = op_##name;\
   blk\
   uv_async_send(&(l->async));\
-  fuse_native_semaphore_wait(&(l->sem));\
+  uv_sem_wait(&(l->sem));\
   return l->res;
 
 #define FUSE_METHOD(name, callbackArgs, signalArgs, signature, callBlk, callbackBlk, signalBlk)\
@@ -57,7 +55,7 @@
     int ret = NULL;\
     signalBlk\
     l->res = ret ? ret : res;\
-    fuse_native_semaphore_signal(&(l->sem));\
+    uv_sem_post(&(l->sem));\
     return ret;\
   }\
   static int fuse_native_##name signature {\
@@ -115,8 +113,13 @@ typedef struct {
 
   struct fuse *fuse;
   struct fuse_chan *ch;
-  bool mounted;
+  char* mnt;
+  char* mntopts;
+  int mounted;
+
   uv_async_t async;
+  uv_mutex_t mut;
+  uv_sem_t sem;
 } fuse_thread_t;
 
 typedef struct {
@@ -156,7 +159,7 @@ typedef struct {
 
   // Internal bookkeeping
   fuse_thread_t *fuse;
-  fuse_native_semaphore_t sem;
+  uv_sem_t sem;
   uv_async_t async;
 
 } fuse_thread_locals_t;
@@ -764,27 +767,49 @@ static void fuse_native_dispatch (uv_async_t* handle, int status) {
   }
 }
 
+static void fuse_native_async_init (uv_async_t* handle, int status) {
+  fuse_thread_locals_t *l = (fuse_thread_locals_t *) handle->data;
+  fuse_thread_t *ft = l->fuse;
+
+  int err = uv_async_init(uv_default_loop(), &(l->async), (uv_async_cb) fuse_native_dispatch);
+  uv_unref(&(l->async));
+
+  uv_sem_init(&(l->sem), 0);
+  l->async.data = l;
+
+  uv_sem_post(&(ft->sem));
+
+  if (err < 0) {
+    printf("uv_async_init failed: %i\n", err);
+    return NULL;
+  }
+}
+
 static fuse_thread_locals_t* get_thread_locals () {
+  struct fuse_context *ctx = fuse_get_context();
+  fuse_thread_t *ft = (fuse_thread_t *) ctx->private_data;
+
   void *data = pthread_getspecific(thread_locals_key);
 
   if (data != NULL) {
-    return (fuse_thread_locals_t *) data;
+    return (fuse_thread_locals_t *)data;
   }
 
   fuse_thread_locals_t* l = (fuse_thread_locals_t *) malloc(sizeof(fuse_thread_locals_t));
+  l->fuse = ft;
 
-  // TODO: mutex me??
-  int err = uv_async_init(uv_default_loop(), &(l->async), (uv_async_cb) fuse_native_dispatch);
+  // Need to lock the mutation of l->async.
+  uv_mutex_lock(&(ft->mut));
+  ft->async.data = l;
+
+  // Notify the main thread to uv_async_init l->async.
+  uv_async_send(&(ft->async));
+  uv_sem_wait(&(ft->sem));
 
   l->async.data = l;
 
-  if (err < 0) {
-    printf("uv_async failed: %i\n", err);
-    return NULL;
-  }
-
-  fuse_native_semaphore_init(&(l->sem));
   pthread_setspecific(thread_locals_key, (void *) l);
+  uv_mutex_unlock(&(ft->mut));
 
   return l;
 }
@@ -793,10 +818,9 @@ static void* start_fuse_thread (void *data) {
   fuse_thread_t *ft = (fuse_thread_t *) data;
   fuse_loop_mt(ft->fuse);
 
-  // printf("her nu\n");
-  // fuse_unmount(mnt, ch);
-  // fuse_session_remove_chan(ch);
-  // fuse_destroy(fuse);
+  fuse_unmount(ft->mnt, ft->ch);
+  fuse_session_remove_chan(ft->ch);
+  fuse_destroy(ft->fuse);
 
   return NULL;
 }
@@ -816,14 +840,12 @@ NAPI_METHOD(fuse_native_mount) {
   }
 
   NAPI_FOR_EACH(handlers, handler) {
-    printf("creating reference for handler: %d\n", i);
     napi_create_reference(env, handler, 1, &ft->handlers[i]);
   }
 
   ft->env = env;
 
   struct fuse_operations ops = { };
-
   if (implemented[op_access]) ops.access = fuse_native_access;
   if (implemented[op_truncate]) ops.truncate = fuse_native_truncate;
   if (implemented[op_ftruncate]) ops.ftruncate = fuse_native_ftruncate;
@@ -875,11 +897,18 @@ NAPI_METHOD(fuse_native_mount) {
 
   struct fuse *fuse = fuse_new(ch, &args, &ops, sizeof(struct fuse_operations), ft);
 
+  uv_mutex_init(&(ft->mut));
+  uv_sem_init(&(ft->sem), 0);
+
+  ft->mnt = mnt;
+  ft->mntopts = mntopts;
   ft->fuse = fuse;
   ft->ch = ch;
-  ft->mounted = true;
+  ft->mounted++;
 
-  if (fuse == NULL) {
+  int err = uv_async_init(uv_default_loop(), &(ft->async), (uv_async_cb) fuse_native_async_init);
+
+  if (fuse == NULL || err < 0) {
     napi_throw_error(env, "fuse failed", "fuse failed");
     return NULL;
   }
@@ -896,12 +925,11 @@ NAPI_METHOD(fuse_native_unmount) {
   NAPI_ARGV_BUFFER_CAST(fuse_thread_t *, ft, 1);
 
   if (ft != NULL && ft->mounted) {
-    fuse_unmount(mnt, ft->ch);
-    printf("joining\n");
     pthread_join(ft->thread, NULL);
-    printf("joined\n");
   }
-  ft->mounted = false;
+
+  uv_unref(&(ft->async));
+  ft->mounted--;
 
   return NULL;
 }
