@@ -250,7 +250,7 @@ class Fuse extends Nanoresource {
   _close (cb) {
     const self = this
     const mnt = JSON.stringify(this.mnt)
-    const cmd = os.platform() === 'darwin' ? `umount ${mnt}` : `fusermount -q -u ${mnt}`
+    const cmd = IS_OSX ? `diskutil umount ${mnt}` : `fusermount -q -u ${mnt}`
 
     exec(cmd, err => {
       if (err) return cb(err)

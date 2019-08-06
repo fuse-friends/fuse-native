@@ -112,8 +112,8 @@ typedef struct {
 
   struct fuse *fuse;
   struct fuse_chan *ch;
-  char* mnt;
-  char* mntopts;
+  char mnt[1024];
+  char mntopts[1024];
   int mounted;
 
   uv_async_t async;
@@ -914,8 +914,8 @@ NAPI_METHOD(fuse_native_mount) {
   uv_mutex_init(&(ft->mut));
   uv_sem_init(&(ft->sem), 0);
 
-  ft->mnt = mnt;
-  ft->mntopts = mntopts;
+  strncpy(ft->mnt, mnt, 1024);
+  strncpy(ft->mntopts, mntopts, 1024);
   ft->fuse = fuse;
   ft->ch = ch;
   ft->mounted++;
