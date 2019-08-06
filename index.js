@@ -479,8 +479,8 @@ class Fuse extends Nanoresource {
     })
   }
 
-  _op_rename (signal, src, dest, flags) {
-    this.ops.rename(src, dest, flags, err => {
+  _op_rename (signal, src, dest) {
+    this.ops.rename(src, dest, err => {
       return signal(err)
     })
   }
