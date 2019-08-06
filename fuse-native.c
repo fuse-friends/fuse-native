@@ -6,8 +6,8 @@
 
 #include <string.h>
 #include <stdio.h>
-
 #include <stdlib.h>
+#include <assert.h>
 
 #include <fuse.h>
 #include <fuse_opt.h>
@@ -35,11 +35,6 @@
   blk\
   uv_async_send(&(l->async));\
   uv_sem_wait(&(l->sem));\
-  if (l->ret != NULL) {\
-    void *tmp = l->ret;\
-    l->ret = NULL;\
-    return tmp;\
-  }\
   return l->res;
 
 #define FUSE_METHOD(name, callbackArgs, signalArgs, signature, callBlk, callbackBlk, signalBlk)\
@@ -60,6 +55,7 @@
     signalBlk\
     l->res = res;\
     uv_sem_post(&(l->sem));\
+    return NULL;\
   }\
   static int fuse_native_##name signature {\
     FUSE_NATIVE_HANDLER(name, callBlk)\
@@ -143,7 +139,6 @@ typedef struct {
   gid_t gid;
   uint32_t atim[2];
   uint32_t mtim[2];
-  void *ret;
   int32_t res;
 
   // Extended attributes
@@ -549,11 +544,30 @@ FUSE_METHOD(removexattr, 2, 0, (const char *path, const char *name), {
   },
   {})
 
-FUSE_METHOD(init, 0, 0, (struct fuse_conn_info *conn, struct fuse_config *cfg), {
-  }, {
-  }, {
-    l->ret = (int) l->fuse;
+static void fuse_native_dispatch_init (uv_async_t* handle, int status, fuse_thread_locals_t* l, fuse_thread_t* ft) {\
+  FUSE_NATIVE_CALLBACK(ft->handlers[op_init], {
+      napi_value argv[2];
+      napi_create_external_buffer(env, sizeof(fuse_thread_locals_t), l, &fin, NULL, &(argv[0]));
+      napi_create_uint32(env, l->op, &(argv[1]));
+      NAPI_MAKE_CALLBACK(env, NULL, ctx, callback, 2, argv, NULL);
   })
+}
+
+NAPI_METHOD(fuse_native_signal_init) {
+  NAPI_ARGV(2)
+  NAPI_ARGV_BUFFER_CAST(fuse_thread_locals_t *, l, 0);
+  NAPI_ARGV_INT32(res, 1);
+  l->res = res;
+  uv_sem_post(&(l->sem));
+}
+
+static void * fuse_native_init (struct fuse_conn_info *conn, struct fuse_config *cfg) {
+  fuse_thread_locals_t *l = get_thread_locals();
+  l->op = op_init;
+  uv_async_send(&(l->async));
+  uv_sem_wait(&(l->sem));
+  return l->fuse;
+}
 
 FUSE_METHOD(error, 0, 0, (), {}, {}, {})
 
@@ -775,17 +789,14 @@ static void fuse_native_async_init (uv_async_t* handle, int status) {
   fuse_thread_t *ft = l->fuse;
 
   int err = uv_async_init(uv_default_loop(), &(l->async), (uv_async_cb) fuse_native_dispatch);
+  assert(err >= 0);
+
   uv_unref(&(l->async));
 
   uv_sem_init(&(l->sem), 0);
   l->async.data = l;
 
   uv_sem_post(&(ft->sem));
-
-  if (err < 0) {
-    printf("uv_async_init failed: %i\n", err);
-    return NULL;
-  }
 }
 
 static fuse_thread_locals_t* get_thread_locals () {
