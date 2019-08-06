@@ -43,7 +43,8 @@ const OpcodesAndDefaults = new Map([
     op: binding.op_fsyncdir
   }],
   ['readdir', {
-    op: binding.op_readdir
+    op: binding.op_readdir,
+    defaults: [[], []]
   }],
   ['truncate', {
     op: binding.op_truncate
@@ -102,7 +103,8 @@ const OpcodesAndDefaults = new Map([
     op: binding.op_releasedir
   }],
   ['create', {
-    op: binding.op_create
+    op: binding.op_create,
+    defaults: [0]
   }],
   ['unlink', {
     op: binding.op_unlink
@@ -216,7 +218,7 @@ class Fuse extends Nanoresource {
       function signal (nativeHandler, err, ...args) {
         const arr = [nativeHandler, err, ...args]
         if (defaults && (!args || !args.length)) arr.concat(defaults)
-        return nativeSignal(...arr)
+        return process.nextTick(nativeSignal, ...arr)
       }
     }
   }

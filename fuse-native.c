@@ -35,6 +35,11 @@
   blk\
   uv_async_send(&(l->async));\
   uv_sem_wait(&(l->sem));\
+  if (l->ret != NULL) {\
+    void *tmp = l->ret;\
+    l->ret = NULL;\
+    return tmp;\
+  }\
   return l->res;
 
 #define FUSE_METHOD(name, callbackArgs, signalArgs, signature, callBlk, callbackBlk, signalBlk)\
@@ -52,11 +57,9 @@
     NAPI_ARGV(signalArgs + 2)\
     NAPI_ARGV_BUFFER_CAST(fuse_thread_locals_t *, l, 0);\
     NAPI_ARGV_INT32(res, 1);\
-    int ret = NULL;\
     signalBlk\
-    l->res = ret ? ret : res;\
+    l->res = res;\
     uv_sem_post(&(l->sem));\
-    return ret;\
   }\
   static int fuse_native_##name signature {\
     FUSE_NATIVE_HANDLER(name, callBlk)\
@@ -140,6 +143,7 @@ typedef struct {
   gid_t gid;
   uint32_t atim[2];
   uint32_t mtim[2];
+  void *ret;
   int32_t res;
 
   // Extended attributes
@@ -408,7 +412,7 @@ FUSE_METHOD(write, 5, 1, (const char *path, const char *buf, size_t len, off_t o
     // TODO: handle bytes processed?
   })
 
-FUSE_METHOD(readdir, 1, 1, (const char *path, void *buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *info), {
+FUSE_METHOD(readdir, 1, 2, (const char *path, void *buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *info), {
     l->buf = buf;
     l->path = path;
     l->offset = offset;
@@ -548,7 +552,7 @@ FUSE_METHOD(removexattr, 2, 0, (const char *path, const char *name), {
 FUSE_METHOD(init, 0, 0, (struct fuse_conn_info *conn, struct fuse_config *cfg), {
   }, {
   }, {
-    ret = (int) l->fuse;
+    l->ret = (int) l->fuse;
   })
 
 FUSE_METHOD(error, 0, 0, (), {}, {}, {})
@@ -631,7 +635,6 @@ FUSE_METHOD(readlink, 1, 1, (const char *path, char *linkname, size_t len), {
   }, {
     NAPI_ARGV_UTF8(linkname, l->len, 2)
     strncpy(l->linkname, linkname, l->len);
-    ret = 0;
   })
 
 FUSE_METHOD(chown, 3, 0, (const char *path, uid_t uid, gid_t gid), {
