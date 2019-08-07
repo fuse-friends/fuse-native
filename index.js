@@ -216,8 +216,8 @@ class Fuse extends Nanoresource {
       }
 
       function signal (nativeHandler, err, ...args) {
-        const arr = [nativeHandler, err, ...args]
-        if (defaults && (!args || !args.length)) arr.concat(defaults)
+        var arr = [nativeHandler, err, ...args]
+        if (defaults && (!args || !args.length)) arr = arr.concat(defaults)
         return process.nextTick(nativeSignal, ...arr)
       }
     }
