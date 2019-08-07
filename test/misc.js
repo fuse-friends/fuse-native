@@ -33,6 +33,21 @@ tape('mount + unmount + mount', function (t) {
   })
 })
 
+tape('mount + unmount + mount with same instance fails', function (t) {
+  const fuse = new Fuse(mnt, {}, { force: true, debug: false })
+
+  fuse.mount(function (err) {
+    t.error(err, 'no error')
+    t.ok(true, 'works')
+    fuse.unmount(function () {
+      fuse.mount(function (err) {
+        t.ok(err, 'had error')
+        t.end()
+      })
+    })
+  })
+})
+
 tape('mnt point must exist', function (t) {
   const fuse = new Fuse('.does-not-exist', {}, { debug: false })
   fuse.mount(function (err) {
