@@ -138,6 +138,7 @@ class Fuse extends Nanoresource {
     this.ops = ops
     this._thread = null
     this._handlers = this._makeHandlerArray()
+    this._closed = false
 
     const implemented = [binding.op_init, binding.op_error, binding.op_getattr]
     if (ops) {
@@ -226,6 +227,8 @@ class Fuse extends Nanoresource {
   // Lifecycle methods
 
   _open (cb) {
+    if (this._closed) return process.nextTick(cb, new Error('Cannot reopen a closed FUSE instance.'))
+
     this._thread = Buffer.alloc(binding.sizeof_fuse_thread_t)
     this._openCallback = cb
 
@@ -263,6 +266,7 @@ class Fuse extends Nanoresource {
       } catch (err) {
         return cb(err)
       }
+      self._closed = true
       return cb(null)
     }
   }
