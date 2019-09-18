@@ -3,7 +3,18 @@ const Fuse = require('./')
 const ops = {
   readdir: function (path, cb) {
     console.log('readdir(%s)', path)
-    if (path === '/') return process.nextTick(cb, 0, ['test'])
+    if (path === '/') return process.nextTick(cb, 0, ['test'], [
+      {
+        mtime: new Date(),
+        atime: new Date(),
+        ctime: new Date(),
+        nlink: 1,
+        size: 12,
+        mode: 33188,
+        uid: process.getuid ? process.getuid() : 0,
+        gid: process.getgid ? process.getgid() : 0
+      }
+    ])
     return process.nextTick(cb, 0)
   },
   /*

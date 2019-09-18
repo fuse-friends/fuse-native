@@ -170,8 +170,7 @@ static fuse_thread_locals_t* get_thread_locals ();
 // TODO: Extract into a separate file.
 
 static void fin (napi_env env, void *fin_data, void* fin_hint) {
-  printf("finaliser is run\n");
-  // exit(0);
+  //exit(0);
 }
 
 static void to_timespec (struct timespec* ts, uint32_t* int_ptr) {
@@ -273,18 +272,16 @@ FUSE_METHOD(access, 2, 0, (const char *path, int mode), {
   },
   {})
 
-FUSE_METHOD(open, 3, 1, (const char *path, struct fuse_file_info *info), {
+FUSE_METHOD(open, 2, 1, (const char *path, struct fuse_file_info *info), {
     l->path = path;
     l->info = info;
   },
   {
     napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
     if (l->info != NULL) {
-      napi_create_uint32(env, l->info->fh, &(argv[3]));
-      napi_create_uint32(env, l->info->flags, &(argv[4]));
+      napi_create_uint32(env, l->info->flags, &(argv[3]));
     } else {
       napi_create_uint32(env, 0, &(argv[3]));
-      napi_create_uint32(env, 0, &(argv[4]));
     }
   },
   {
@@ -331,7 +328,7 @@ FUSE_METHOD(create, 2, 1, (const char *path, mode_t mode, struct fuse_file_info 
     }
   })
 
-FUSE_METHOD(utimens, 2, 0, (const char *path, const struct timespec tv[2]), {
+FUSE_METHOD(utimens, 3, 0, (const char *path, const struct timespec tv[2]), {
     l->path = path;
     from_timespec(&tv[0], l->atim);
     from_timespec(&tv[1], l->mtim);
@@ -444,6 +441,8 @@ FUSE_METHOD(readdir, 1, 2, (const char *path, void *buf, fuse_fill_dir_t filler,
         struct stat st;
         populate_stat(stats_array, &st);
 
+        // TODO: It turns out readdirplus likely won't work with FUSE 29...
+        // Metadata caching between readdir/getattr will be enabled when we upgrade fuse-shared-library
         int err = l->readdir_filler((char *) l->buf, name, (struct stat *) &st, 0);
         if (err == 1) {
           break;
@@ -958,7 +957,8 @@ NAPI_METHOD(fuse_native_unmount) {
   NAPI_ARGV_BUFFER_CAST(fuse_thread_t *, ft, 1);
 
   if (ft != NULL && ft->mounted) {
-    pthread_join(ft->thread, NULL);
+    // TODO: Investigate why the FUSE thread is not always killed after fusermount.
+    // pthread_join(ft->thread, NULL);
   }
 
   uv_unref((uv_handle_t *) &(ft->async));

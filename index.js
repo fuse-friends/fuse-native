@@ -4,6 +4,8 @@ const path = require('path')
 const { exec } = require('child_process')
 
 const Nanoresource = require('nanoresource')
+const { beforeMount, beforeUnmount, configure, unconfigure, isConfigured } = require('fuse-shared-library')
+
 const binding = require('node-gyp-build')(__dirname)
 
 const IS_OSX = os.platform() === 'darwin'
@@ -251,13 +253,14 @@ class Fuse extends Nanoresource {
   }
 
   _close (cb) {
+    if (this._closed) return process.nextTick(cb, null)
     const self = this
     const mnt = JSON.stringify(this.mnt)
-    const cmd = IS_OSX ? `diskutil umount ${mnt}` : `fusermount -q -u ${mnt}`
+    const cmd = IS_OSX ? `diskutil umount ${mnt}` : `fusermount -uz ${mnt}`
 
-    exec(cmd, err => {
+    exec(cmd, (err, stdout, stderr) => {
       if (err) return cb(err)
-      return nativeUnmount()
+      nativeUnmount()
     })
 
     function nativeUnmount () {
@@ -658,6 +661,13 @@ Fuse.EREMOTEIO = -121
 Fuse.EDQUOT = -122
 Fuse.ENOMEDIUM = -123
 Fuse.EMEDIUMTYPE = -124
+
+// Forward configuration functions through the exported class.
+Fuse.beforeMount = beforeMount
+Fuse.beforeUnmount = beforeUnmount
+Fuse.configure = configure
+Fuse.unconfigure = unconfigure
+Fuse.isConfigured = isConfigured
 
 module.exports = Fuse
 
