@@ -223,10 +223,13 @@ static void populate_statvfs (uint32_t *ints, struct statvfs* statvfs) {
 
 // Methods
 
-FUSE_METHOD(statfs, 0, 1, (const char * path, struct statvfs *statvfs), {
+FUSE_METHOD(statfs, 1, 1, (const char * path, struct statvfs *statvfs), {
+    l->path = path;
     l->statvfs = statvfs;
   },
-  {},
+  {
+    napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
+  },
   {
     NAPI_ARGV_BUFFER_CAST(uint32_t*, ints, 2)
     populate_statvfs(ints, l->statvfs);

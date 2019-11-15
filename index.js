@@ -300,11 +300,11 @@ class Fuse extends Nanoresource {
     })
   }
 
-  _op_statfs (signal) {
-    this.ops.statfs((err, statfs) => {
+  _op_statfs (signal, path) {
+    this.ops.statfs(path, (err, statfs) => {
       if (err) return signal(err)
       const arr = getStatfsArray(statfs)
-      return signal(null, [arr])
+      return signal(0, arr)
     })
   }
 
