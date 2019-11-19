@@ -62,6 +62,9 @@
     FUSE_NATIVE_HANDLER(name, callBlk)\
   }
 
+#define FUSE_METHOD_VOID(name, callbackArgs, signalArgs, signature, callBlk, callbackBlk)\
+  FUSE_METHOD(name, callbackArgs, signalArgs, signature, callBlk, callbackBlk, {})
+
 // Opcodes
 
 static const uint32_t op_init = 0;
@@ -226,495 +229,442 @@ static void populate_statvfs (uint32_t *ints, struct statvfs* statvfs) {
 // Methods
 
 FUSE_METHOD(statfs, 1, 1, (const char * path, struct statvfs *statvfs), {
-    l->path = path;
-    l->statvfs = statvfs;
-  },
-  {
-    napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
-  },
-  {
-    NAPI_ARGV_BUFFER_CAST(uint32_t*, ints, 2)
-    populate_statvfs(ints, l->statvfs);
-  })
+  l->path = path;
+  l->statvfs = statvfs;
+}, {
+  napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
+}, {
+  NAPI_ARGV_BUFFER_CAST(uint32_t*, ints, 2)
+  populate_statvfs(ints, l->statvfs);
+})
 
 FUSE_METHOD(getattr, 1, 1, (const char *path, struct stat *stat), {
-    l->path = path;
-    l->stat = stat;
-  },
-  {
-    napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
-  },
-  {
-    NAPI_ARGV_BUFFER_CAST(uint32_t*, ints, 2)
-    populate_stat(ints, l->stat);
-  })
+  l->path = path;
+  l->stat = stat;
+}, {
+  napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
+}, {
+  NAPI_ARGV_BUFFER_CAST(uint32_t*, ints, 2)
+  populate_stat(ints, l->stat);
+})
 
 FUSE_METHOD(fgetattr, 2, 1, (const char *path, struct stat *stat, struct fuse_file_info *info), {
-    l->path = path;
-    l->stat = stat;
-    l->info = info;
-  },
-  {
-    napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
-    if (l->info != NULL) {
-      napi_create_uint32(env, l->info->fh, &(argv[3]));
-    } else {
-      napi_create_uint32(env, 0, &(argv[3]));
-    }
-  },
-  {
-    NAPI_ARGV_BUFFER_CAST(uint32_t*, ints, 2)
-    populate_stat(ints, l->stat);
-  })
+  l->path = path;
+  l->stat = stat;
+  l->info = info;
+}, {
+  napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
+  if (l->info != NULL) {
+    napi_create_uint32(env, l->info->fh, &(argv[3]));
+  } else {
+    napi_create_uint32(env, 0, &(argv[3]));
+  }
+}, {
+  NAPI_ARGV_BUFFER_CAST(uint32_t*, ints, 2)
+  populate_stat(ints, l->stat);
+})
 
-FUSE_METHOD(access, 2, 0, (const char *path, int mode), {
-    l->path = path;
-    l->mode = mode;
-  },
-  {
-    napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
-    napi_create_uint32(env, l->mode, &(argv[3]));
-  },
-  {})
+FUSE_METHOD_VOID(access, 2, 0, (const char *path, int mode), {
+  l->path = path;
+  l->mode = mode;
+}, {
+  napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
+  napi_create_uint32(env, l->mode, &(argv[3]));
+})
 
 FUSE_METHOD(open, 2, 1, (const char *path, struct fuse_file_info *info), {
-    l->path = path;
-    l->info = info;
-  },
-  {
-    napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
-    if (l->info != NULL) {
-      napi_create_uint32(env, l->info->flags, &(argv[3]));
-    } else {
-      napi_create_uint32(env, 0, &(argv[3]));
-    }
-  },
-  {
-    NAPI_ARGV_INT32(fd, 2)
-    if (fd != 0) {
-      l->info->fh = fd;
-    }
-  })
+  l->path = path;
+  l->info = info;
+}, {
+  napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
+  if (l->info != NULL) {
+    napi_create_uint32(env, l->info->flags, &(argv[3]));
+  } else {
+    napi_create_uint32(env, 0, &(argv[3]));
+  }
+}, {
+  NAPI_ARGV_INT32(fd, 2)
+  if (fd != 0) {
+    l->info->fh = fd;
+  }
+})
 
 FUSE_METHOD(opendir, 3, 1, (const char *path, struct fuse_file_info *info), {
-    l->path = path;
-    l->info = info;
-  },
-  {
-    napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
-    if (l->info != NULL) {
-      napi_create_uint32(env, l->info->fh, &(argv[3]));
-      napi_create_uint32(env, l->info->flags, &(argv[4]));
-    } else {
-      napi_create_uint32(env, 0, &(argv[3]));
-      napi_create_uint32(env, 0, &(argv[4]));
-    }
-  },
-  {
-    NAPI_ARGV_INT32(fd, 2)
-    if (fd != 0) {
-      l->info->fh = fd;
-    }
-  })
+  l->path = path;
+  l->info = info;
+}, {
+  napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
+  if (l->info != NULL) {
+    napi_create_uint32(env, l->info->fh, &(argv[3]));
+    napi_create_uint32(env, l->info->flags, &(argv[4]));
+  } else {
+    napi_create_uint32(env, 0, &(argv[3]));
+    napi_create_uint32(env, 0, &(argv[4]));
+  }
+}, {
+  NAPI_ARGV_INT32(fd, 2)
+  if (fd != 0) {
+    l->info->fh = fd;
+  }
+})
 
 FUSE_METHOD(create, 2, 1, (const char *path, mode_t mode, struct fuse_file_info *info), {
-    l->path = path;
-    l->mode = mode;
-    l->info = info;
-  },
-  {
-    napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
-    napi_create_uint32(env, l->mode, &(argv[3]));
-  },
-  {
-    NAPI_ARGV_INT32(fd, 2)
-    if (fd != 0) {
-      l->info->fh = fd;
-    }
-  })
+  l->path = path;
+  l->mode = mode;
+  l->info = info;
+}, {
+  napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
+  napi_create_uint32(env, l->mode, &(argv[3]));
+}, {
+  NAPI_ARGV_INT32(fd, 2)
+  if (fd != 0) {
+    l->info->fh = fd;
+  }
+})
 
-FUSE_METHOD(utimens, 3, 0, (const char *path, const struct timespec tv[2]), {
-    l->path = path;
-    from_timespec(&tv[0], l->atim);
-    from_timespec(&tv[1], l->mtim);
-  },
-  {
-    napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
-    napi_create_external_arraybuffer(env, l->atim, 2 * sizeof(uint32_t), &fin, NULL, &argv[3]);
-    napi_create_external_arraybuffer(env, l->mtim, 2 * sizeof(uint32_t), &fin, NULL, &argv[4]);
-  },
-  {})
+FUSE_METHOD_VOID(utimens, 3, 0, (const char *path, const struct timespec tv[2]), {
+  l->path = path;
+  from_timespec(&tv[0], l->atim);
+  from_timespec(&tv[1], l->mtim);
+}, {
+  napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
+  napi_create_external_arraybuffer(env, l->atim, 2 * sizeof(uint32_t), &fin, NULL, &argv[3]);
+  napi_create_external_arraybuffer(env, l->mtim, 2 * sizeof(uint32_t), &fin, NULL, &argv[4]);
+})
 
-FUSE_METHOD(release, 2, 0, (const char *path, struct fuse_file_info *info), {
-    l->path = path;
-    l->info = info;
-  },
-  {
-    napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
-    if (l->info != NULL) {
-      napi_create_uint32(env, l->info->fh, &(argv[3]));
-    } else {
-      napi_create_uint32(env, 0, &(argv[3]));
-    }
-  },
-  {})
+FUSE_METHOD_VOID(release, 2, 0, (const char *path, struct fuse_file_info *info), {
+  l->path = path;
+  l->info = info;
+}, {
+  napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
+  if (l->info != NULL) {
+    napi_create_uint32(env, l->info->fh, &(argv[3]));
+  } else {
+    napi_create_uint32(env, 0, &(argv[3]));
+  }
+})
 
-FUSE_METHOD(releasedir, 2, 0, (const char *path, struct fuse_file_info *info), {
-    l->path = path;
-    l->info = info;
-  },
-  {
-    napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
-    if (l->info != NULL) {
-      napi_create_uint32(env, l->info->fh, &(argv[3]));
-    } else {
-      napi_create_uint32(env, 0, &(argv[3]));
-    }
-  },
-  {})
+FUSE_METHOD_VOID(releasedir, 2, 0, (const char *path, struct fuse_file_info *info), {
+  l->path = path;
+  l->info = info;
+}, {
+  napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
+  if (l->info != NULL) {
+    napi_create_uint32(env, l->info->fh, &(argv[3]));
+  } else {
+    napi_create_uint32(env, 0, &(argv[3]));
+  }
+})
 
 FUSE_METHOD(read, 5, 1, (const char *path, char *buf, size_t len, off_t offset, struct fuse_file_info *info), {
-    l->path = path;
-    l->buf = buf;
-    l->len = len;
-    l->offset = offset;
-    l->info = info;
-  },
-  {
-    napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
-    napi_create_uint32(env, l->info->fh, &(argv[3]));
-    napi_create_external_buffer(env, l->len, (char *) l->buf, &fin, NULL, &(argv[4]));
-    napi_create_uint32(env, l->len, &(argv[5]));
-    napi_create_uint32(env, l->offset, &(argv[6]));
-  },
-  {
-    // TODO: handle bytes processed?
-  })
+  l->path = path;
+  l->buf = buf;
+  l->len = len;
+  l->offset = offset;
+  l->info = info;
+}, {
+  napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
+  napi_create_uint32(env, l->info->fh, &(argv[3]));
+  napi_create_external_buffer(env, l->len, (char *) l->buf, &fin, NULL, &(argv[4]));
+  napi_create_uint32(env, l->len, &(argv[5]));
+  napi_create_uint32(env, l->offset, &(argv[6]));
+}, {
+  // TODO: handle bytes processed?
+})
 
 FUSE_METHOD(write, 5, 1, (const char *path, const char *buf, size_t len, off_t offset, struct fuse_file_info *info), {
-    l->path = path;
-    l->buf = buf;
-    l->len = len;
-    l->offset = offset;
-    l->info = info;
-  },
-  {
-    napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
-    napi_create_uint32(env, l->info->fh, &(argv[3]));
-    napi_create_external_buffer(env, l->len, (char *) l->buf, &fin, NULL, &(argv[4]));
-    napi_create_uint32(env, l->len, &(argv[5]));
-    napi_create_uint32(env, l->offset, &(argv[6]));
-  },
-  {
-    // TODO: handle bytes processed?
-  })
+  l->path = path;
+  l->buf = buf;
+  l->len = len;
+  l->offset = offset;
+  l->info = info;
+}, {
+  napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
+  napi_create_uint32(env, l->info->fh, &(argv[3]));
+  napi_create_external_buffer(env, l->len, (char *) l->buf, &fin, NULL, &(argv[4]));
+  napi_create_uint32(env, l->len, &(argv[5]));
+  napi_create_uint32(env, l->offset, &(argv[6]));
+}, {
+  // TODO: handle bytes processed?
+})
 
 FUSE_METHOD(readdir, 1, 2, (const char *path, void *buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *info), {
-    l->buf = buf;
-    l->path = path;
-    l->offset = offset;
-    l->info = info;
-    l->readdir_filler = filler;
-  },
-  {
-    napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
-  },
-  {
-    uint32_t stats_length;
-    uint32_t names_length;
-    napi_get_array_length(env, argv[3], &stats_length);
-    napi_get_array_length(env, argv[2], &names_length);
+  l->buf = buf;
+  l->path = path;
+  l->offset = offset;
+  l->info = info;
+  l->readdir_filler = filler;
+}, {
+  napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
+}, {
+  uint32_t stats_length;
+  uint32_t names_length;
+  napi_get_array_length(env, argv[3], &stats_length);
+  napi_get_array_length(env, argv[2], &names_length);
 
-    napi_value raw_names = argv[2];
-    napi_value raw_stats = argv[3];
+  napi_value raw_names = argv[2];
+  napi_value raw_stats = argv[3];
 
-    if (names_length != stats_length) {
-      NAPI_FOR_EACH(raw_names, raw_name) {
-        NAPI_UTF8(name, 1024, raw_name)
-        int err = l->readdir_filler((char *) l->buf, name, NULL, 0);
-        if (err == 1) {
-          break;
-        }
-      }
-    } else {
-      NAPI_FOR_EACH(raw_names, raw_name) {
-        NAPI_UTF8(name, 1024, raw_name)
-        napi_value raw_stat;
-        napi_get_element(env, raw_stats, i, &raw_stat);
-
-        NAPI_BUFFER_CAST(uint32_t*, stats_array, raw_stat);
-        struct stat st;
-        populate_stat(stats_array, &st);
-
-        // TODO: It turns out readdirplus likely won't work with FUSE 29...
-        // Metadata caching between readdir/getattr will be enabled when we upgrade fuse-shared-library
-        int err = l->readdir_filler((char *) l->buf, name, (struct stat *) &st, 0);
-        if (err == 1) {
-          break;
-        }
+  if (names_length != stats_length) {
+    NAPI_FOR_EACH(raw_names, raw_name) {
+      NAPI_UTF8(name, 1024, raw_name)
+      int err = l->readdir_filler((char *) l->buf, name, NULL, 0);
+      if (err == 1) {
+        break;
       }
     }
-  })
+  } else {
+    NAPI_FOR_EACH(raw_names, raw_name) {
+      NAPI_UTF8(name, 1024, raw_name)
+      napi_value raw_stat;
+      napi_get_element(env, raw_stats, i, &raw_stat);
+
+      NAPI_BUFFER_CAST(uint32_t*, stats_array, raw_stat);
+      struct stat st;
+      populate_stat(stats_array, &st);
+
+      // TODO: It turns out readdirplus likely won't work with FUSE 29...
+      // Metadata caching between readdir/getattr will be enabled when we upgrade fuse-shared-library
+      int err = l->readdir_filler((char *) l->buf, name, (struct stat *) &st, 0);
+      if (err == 1) {
+        break;
+      }
+    }
+  }
+})
 
 #ifdef __APPLE__
 
-FUSE_METHOD(setxattr, 6, 0, (const char *path, const char *name, const char *value, size_t size, int flags, uint32_t position), {
-    l->path = path;
-    l->name = name;
-    l->value = value;
-    l->size = size;
-    l->flags = flags;
-    l->position = position;
-  },
-  {
-    napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
-    napi_create_string_utf8(env, l->name, NAPI_AUTO_LENGTH, &(argv[3]));
-    napi_create_string_utf8(env, l->value, NAPI_AUTO_LENGTH, &(argv[4]));
-    napi_create_uint32(env, l->size, &(argv[5]));
-    napi_create_uint32(env, l->flags, &(argv[6]));
-    napi_create_uint32(env, l->position, &(argv[7]));
-  },
-  {})
+FUSE_METHOD_VOID(setxattr, 6, 0, (const char *path, const char *name, const char *value, size_t size, int flags, uint32_t position), {
+  l->path = path;
+  l->name = name;
+  l->value = value;
+  l->size = size;
+  l->flags = flags;
+  l->position = position;
+}, {
+  napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
+  napi_create_string_utf8(env, l->name, NAPI_AUTO_LENGTH, &(argv[3]));
+  napi_create_string_utf8(env, l->value, NAPI_AUTO_LENGTH, &(argv[4]));
+  napi_create_uint32(env, l->size, &(argv[5]));
+  napi_create_uint32(env, l->flags, &(argv[6]));
+  napi_create_uint32(env, l->position, &(argv[7]));
+})
 
-FUSE_METHOD(getxattr, 5, 0, (const char *path, const char *name, char *value, size_t size, uint32_t position), {
-    l->path = path;
-    l->name = name;
-    l->value = value;
-    l->size = size;
-    l->position = position;
-  },
-  {
-    napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
-    napi_create_string_utf8(env, l->name, NAPI_AUTO_LENGTH, &(argv[3]));
-    napi_create_string_utf8(env, l->value, NAPI_AUTO_LENGTH, &(argv[4]));
-    napi_create_uint32(env, l->size, &(argv[5]));
-    napi_create_uint32(env, l->position, &(argv[6]));
-  },
-  {})
+FUSE_METHOD_VOID(getxattr, 5, 0, (const char *path, const char *name, char *value, size_t size, uint32_t position), {
+  l->path = path;
+  l->name = name;
+  l->value = value;
+  l->size = size;
+  l->position = position;
+}, {
+  napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
+  napi_create_string_utf8(env, l->name, NAPI_AUTO_LENGTH, &(argv[3]));
+  napi_create_string_utf8(env, l->value, NAPI_AUTO_LENGTH, &(argv[4]));
+  napi_create_uint32(env, l->size, &(argv[5]));
+  napi_create_uint32(env, l->position, &(argv[6]));
+})
 
 #else
 
-FUSE_METHOD(setxattr, 5, 0, (const char *path, const char *name, const char *value, size_t size, int flags), {
-    l->path = path;
-    l->name = name;
-    l->value = value;
-    l->size = size;
-    l->flags = flags;
-  },
-  {
-    napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
-    napi_create_string_utf8(env, l->name, NAPI_AUTO_LENGTH, &(argv[3]));
-    napi_create_string_utf8(env, l->value, NAPI_AUTO_LENGTH, &(argv[4]));
-    napi_create_uint32(env, l->size, &(argv[5]));
-    napi_create_uint32(env, l->flags, &(argv[6]));
-  },
-  {})
+FUSE_METHOD_VOID(setxattr, 5, 0, (const char *path, const char *name, const char *value, size_t size, int flags), {
+  l->path = path;
+  l->name = name;
+  l->value = value;
+  l->size = size;
+  l->flags = flags;
+}, {
+  napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
+  napi_create_string_utf8(env, l->name, NAPI_AUTO_LENGTH, &(argv[3]));
+  napi_create_string_utf8(env, l->value, NAPI_AUTO_LENGTH, &(argv[4]));
+  napi_create_uint32(env, l->size, &(argv[5]));
+  napi_create_uint32(env, l->flags, &(argv[6]));
+})
 
-FUSE_METHOD(getxattr, 4, 0, (const char *path, const char *name, char *value, size_t size), {
-    l->path = path;
-    l->name = name;
-    l->value = value;
-    l->size = size;
-  },
-  {
-    napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
-    napi_create_string_utf8(env, l->name, NAPI_AUTO_LENGTH, &(argv[3]));
-    napi_create_string_utf8(env, l->value, NAPI_AUTO_LENGTH, &(argv[4]));
-    napi_create_uint32(env, l->size, &(argv[5]));
-  },
-  {})
+FUSE_METHOD_VOID(getxattr, 4, 0, (const char *path, const char *name, char *value, size_t size), {
+  l->path = path;
+  l->name = name;
+  l->value = value;
+  l->size = size;
+}, {
+  napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
+  napi_create_string_utf8(env, l->name, NAPI_AUTO_LENGTH, &(argv[3]));
+  napi_create_string_utf8(env, l->value, NAPI_AUTO_LENGTH, &(argv[4]));
+  napi_create_uint32(env, l->size, &(argv[5]));
+})
 
 #endif
 
-FUSE_METHOD(listxattr, 3,  0, (const char *path, char *list, size_t size), {
-    l->path = path;
-    l->list = list;
-    l->size = size;
-  },
-  {
-    napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
-    napi_create_external_buffer(env, l->size, l->list, &fin, NULL, &(argv[3]));
-    napi_create_uint32(env, l->size, &(argv[4]));
-  },
-  {})
+FUSE_METHOD_VOID(listxattr, 3,  0, (const char *path, char *list, size_t size), {
+  l->path = path;
+  l->list = list;
+  l->size = size;
+}, {
+  napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
+  napi_create_external_buffer(env, l->size, l->list, &fin, NULL, &(argv[3]));
+  napi_create_uint32(env, l->size, &(argv[4]));
+})
 
-FUSE_METHOD(removexattr, 2, 0, (const char *path, const char *name), {
-    l->path = path;
-    l->name = name;
-  },
-  {
-    napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
-    napi_create_string_utf8(env, l->name, NAPI_AUTO_LENGTH, &(argv[3]));
-  },
-  {})
+FUSE_METHOD_VOID(removexattr, 2, 0, (const char *path, const char *name), {
+  l->path = path;
+  l->name = name;
+}, {
+  napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
+  napi_create_string_utf8(env, l->name, NAPI_AUTO_LENGTH, &(argv[3]));
+})
 
-FUSE_METHOD(flush, 2, 0, (const char *path, struct fuse_file_info *info), {
-    l->path = path;
-    l->info = info;
-  }, {
-    napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
-    if (l->info != NULL) {
-      napi_create_uint32(env, l->info->fh, &(argv[3]));
-    } else {
-      napi_create_uint32(env, 0, &(argv[3]));
-    }
-  },
-  {})
+FUSE_METHOD_VOID(flush, 2, 0, (const char *path, struct fuse_file_info *info), {
+  l->path = path;
+  l->info = info;
+}, {
+  napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
+  if (l->info != NULL) {
+    napi_create_uint32(env, l->info->fh, &(argv[3]));
+  } else {
+    napi_create_uint32(env, 0, &(argv[3]));
+  }
+})
 
-FUSE_METHOD(fsync, 3, 0, (const char *path, int datasync, struct fuse_file_info *info), {
-    l->path = path;
-    l->mode = datasync;
-    l->info = info;
-  }, {
-    napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
-    napi_create_uint32(env, l->mode, &(argv[3]));
-    if (l->info != NULL) {
-      napi_create_uint32(env, l->info->fh, &(argv[4]));
-    } else {
-      napi_create_uint32(env, 0, &(argv[4]));
-    }
-  },
-  {})
+FUSE_METHOD_VOID(fsync, 3, 0, (const char *path, int datasync, struct fuse_file_info *info), {
+  l->path = path;
+  l->mode = datasync;
+  l->info = info;
+}, {
+  napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
+  napi_create_uint32(env, l->mode, &(argv[3]));
+  if (l->info != NULL) {
+    napi_create_uint32(env, l->info->fh, &(argv[4]));
+  } else {
+    napi_create_uint32(env, 0, &(argv[4]));
+  }
+})
 
-FUSE_METHOD(fsyncdir, 3, 0, (const char *path, int datasync, struct fuse_file_info *info), {
-    l->path = path;
-    l->mode = datasync;
-    l->info = info;
-  },
-  {
-    napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
-    napi_create_uint32(env, l->mode, &(argv[3]));
-    if (l->info != NULL) {
-      napi_create_uint32(env, l->info->fh, &(argv[4]));
-    } else {
-      napi_create_uint32(env, 0, &(argv[4]));
-    }
-  },
-  {})
+FUSE_METHOD_VOID(fsyncdir, 3, 0, (const char *path, int datasync, struct fuse_file_info *info), {
+  l->path = path;
+  l->mode = datasync;
+  l->info = info;
+}, {
+  napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
+  napi_create_uint32(env, l->mode, &(argv[3]));
+  if (l->info != NULL) {
+    napi_create_uint32(env, l->info->fh, &(argv[4]));
+  } else {
+    napi_create_uint32(env, 0, &(argv[4]));
+  }
+})
 
 
-FUSE_METHOD(truncate, 2, 0, (const char *path, off_t size), {
-    l->path = path;
-    l->len = size;
-  }, {
-    napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
-    napi_create_uint32(env, l->len, &(argv[3]));
-  },
-  {})
+FUSE_METHOD_VOID(truncate, 2, 0, (const char *path, off_t size), {
+  l->path = path;
+  l->len = size;
+}, {
+  napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
+  napi_create_uint32(env, l->len, &(argv[3]));
+})
 
-FUSE_METHOD(ftruncate, 2, 0, (const char *path, off_t size, struct fuse_file_info *info), {
-    l->path = path;
-    l->len = size;
-    l->info = info;
-  }, {
-    napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
-    napi_create_uint32(env, l->len, &(argv[3]));
-    if (l->info != NULL) {
-      napi_create_uint32(env, l->info->fh, &(argv[4]));
-    } else {
-      napi_create_uint32(env, 0, &(argv[4]));
-    }
-  },
-  {})
+FUSE_METHOD_VOID(ftruncate, 2, 0, (const char *path, off_t size, struct fuse_file_info *info), {
+  l->path = path;
+  l->len = size;
+  l->info = info;
+}, {
+  napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
+  napi_create_uint32(env, l->len, &(argv[3]));
+  if (l->info != NULL) {
+    napi_create_uint32(env, l->info->fh, &(argv[4]));
+  } else {
+    napi_create_uint32(env, 0, &(argv[4]));
+  }
+})
 
 FUSE_METHOD(readlink, 1, 1, (const char *path, char *linkname, size_t len), {
-    l->path = path;
-    l->linkname = linkname;
-    l->len = len;
-  }, {
-    napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
-  }, {
-    NAPI_ARGV_UTF8(linkname, l->len, 2)
-    strncpy(l->linkname, linkname, l->len);
-  })
+  l->path = path;
+  l->linkname = linkname;
+  l->len = len;
+}, {
+  napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
+}, {
+  NAPI_ARGV_UTF8(linkname, l->len, 2)
+  strncpy(l->linkname, linkname, l->len);
+})
 
-FUSE_METHOD(chown, 3, 0, (const char *path, uid_t uid, gid_t gid), {
-    l->path = path;
-    l->uid = uid;
-    l->gid = gid;
-  }, {
-    napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
-    napi_create_uint32(env, l->uid, &(argv[3]));
-    napi_create_uint32(env, l->gid, &(argv[4]));
-  },
-  {})
+FUSE_METHOD_VOID(chown, 3, 0, (const char *path, uid_t uid, gid_t gid), {
+  l->path = path;
+  l->uid = uid;
+  l->gid = gid;
+}, {
+  napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
+  napi_create_uint32(env, l->uid, &(argv[3]));
+  napi_create_uint32(env, l->gid, &(argv[4]));
+})
 
-FUSE_METHOD(chmod, 2, 0, (const char *path, mode_t mode), {
-    l->path = path;
-    l->mode = mode;
-  }, {
-    napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
-    napi_create_uint32(env, l->mode, &(argv[3]));
-  },
-  {})
+FUSE_METHOD_VOID(chmod, 2, 0, (const char *path, mode_t mode), {
+  l->path = path;
+  l->mode = mode;
+}, {
+  napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
+  napi_create_uint32(env, l->mode, &(argv[3]));
+})
 
-FUSE_METHOD(mknod, 3, 0, (const char *path, mode_t mode, dev_t dev), {
-    l->path = path;
-    l->mode = mode;
-    l->dev = dev;
-  }, {
-    napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
-    napi_create_uint32(env, l->mode, &(argv[3]));
-    napi_create_uint32(env, l->dev, &(argv[4]));
-  },
-  {})
+FUSE_METHOD_VOID(mknod, 3, 0, (const char *path, mode_t mode, dev_t dev), {
+  l->path = path;
+  l->mode = mode;
+  l->dev = dev;
+}, {
+  napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
+  napi_create_uint32(env, l->mode, &(argv[3]));
+  napi_create_uint32(env, l->dev, &(argv[4]));
+})
 
-FUSE_METHOD(unlink, 1, 0, (const char *path), {
-    l->path = path;
-  }, {
-    napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
-  },
-  {})
+FUSE_METHOD_VOID(unlink, 1, 0, (const char *path), {
+  l->path = path;
+}, {
+  napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
+})
 
-FUSE_METHOD(rename, 2, 0, (const char *path, const char *dest), {
-    l->path = path;
-    l->dest = dest;
-  }, {
-    napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
-    napi_create_string_utf8(env, l->dest, NAPI_AUTO_LENGTH, &(argv[3]));
-  },
-  {})
+FUSE_METHOD_VOID(rename, 2, 0, (const char *path, const char *dest), {
+  l->path = path;
+  l->dest = dest;
+}, {
+  napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
+  napi_create_string_utf8(env, l->dest, NAPI_AUTO_LENGTH, &(argv[3]));
+})
 
-FUSE_METHOD(link, 2, 0, (const char *path, const char *dest), {
-    l->path = path;
-    l->dest = dest;
-  }, {
-    napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
-    napi_create_string_utf8(env, l->dest, NAPI_AUTO_LENGTH, &(argv[3]));
-  },
-  {})
+FUSE_METHOD_VOID(link, 2, 0, (const char *path, const char *dest), {
+  l->path = path;
+  l->dest = dest;
+}, {
+  napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
+  napi_create_string_utf8(env, l->dest, NAPI_AUTO_LENGTH, &(argv[3]));
+})
 
-FUSE_METHOD(symlink, 2, 0, (const char *path, const char *dest), {
-    l->path = path;
-    l->dest = dest;
-  }, {
-    napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
-    napi_create_string_utf8(env, l->dest, NAPI_AUTO_LENGTH, &(argv[3]));
-  },
-  {})
+FUSE_METHOD_VOID(symlink, 2, 0, (const char *path, const char *dest), {
+  l->path = path;
+  l->dest = dest;
+}, {
+  napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
+  napi_create_string_utf8(env, l->dest, NAPI_AUTO_LENGTH, &(argv[3]));
+})
 
-FUSE_METHOD(mkdir, 2, 0, (const char *path, mode_t mode), {
-    l->path = path;
-    l->mode = mode;
-  }, {
-    napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
-    napi_create_uint32(env, l->mode, &(argv[3]));
-  },
-  {})
+FUSE_METHOD_VOID(mkdir, 2, 0, (const char *path, mode_t mode), {
+  l->path = path;
+  l->mode = mode;
+}, {
+  napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
+  napi_create_uint32(env, l->mode, &(argv[3]));
+})
 
-FUSE_METHOD(rmdir, 1, 0, (const char *path), {
-    l->path = path;
-  }, {
-    napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
-  },
-  {})
+FUSE_METHOD_VOID(rmdir, 1, 0, (const char *path), {
+  l->path = path;
+}, {
+  napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
+})
 
 static void fuse_native_dispatch_init (uv_async_t* handle, fuse_thread_locals_t* l, fuse_thread_t* ft) {\
   FUSE_NATIVE_CALLBACK(ft->handlers[op_init], {
-      napi_value argv[2];
-      napi_create_external_buffer(env, sizeof(fuse_thread_locals_t), l, &fin, NULL, &(argv[0]));
-      napi_create_uint32(env, l->op, &(argv[1]));
-      NAPI_MAKE_CALLBACK(env, NULL, ctx, callback, 2, argv, NULL);
+    napi_value argv[2];
+    napi_create_external_buffer(env, sizeof(fuse_thread_locals_t), l, &fin, NULL, &(argv[0]));
+    napi_create_uint32(env, l->op, &(argv[1]));
+    NAPI_MAKE_CALLBACK(env, NULL, ctx, callback, 2, argv, NULL);
   })
 }
 
@@ -736,14 +686,14 @@ static void * fuse_native_init (struct fuse_conn_info *conn) {
   return l->fuse;
 }
 
-static void fuse_native_dispatch_destroy (uv_async_t* handle, fuse_thread_locals_t* l, fuse_thread_t* ft) {\
+static void fuse_native_dispatch_destroy (uv_async_t* handle, fuse_thread_locals_t* l, fuse_thread_t* ft) {
   FUSE_NATIVE_CALLBACK(ft->handlers[op_destroy], {
-      napi_value argv[2];
-      napi_create_external_buffer(env, sizeof(fuse_thread_locals_t), l, &fin, NULL, &(argv[0]));
-      napi_create_uint32(env, l->op, &(argv[1]));
-      NAPI_MAKE_CALLBACK(env, NULL, ctx, callback, 2, argv, NULL);
-    })
-    }
+    napi_value argv[2];
+    napi_create_external_buffer(env, sizeof(fuse_thread_locals_t), l, &fin, NULL, &(argv[0]));
+    napi_create_uint32(env, l->op, &(argv[1]));
+    NAPI_MAKE_CALLBACK(env, NULL, ctx, callback, 2, argv, NULL);
+  })
+}
 
 NAPI_METHOD(fuse_native_signal_destroy) {
   NAPI_ARGV(2)
@@ -1017,5 +967,3 @@ NAPI_INIT() {
   NAPI_EXPORT_UINT32(op_rmdir)
   NAPI_EXPORT_UINT32(op_destroy)
 }
-
-
