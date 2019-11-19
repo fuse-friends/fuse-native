@@ -3,10 +3,10 @@
     "target_name": "fuse",
     "include_dirs": [
       "<!(node -e \"require('napi-macros')\")",
-      "<!(node -e \"require('fuse-shared-library/include')\")",
+      "<!(node -e \"require('fuse-shared-library-darwin-debug/include')\")",
     ],
     "libraries": [
-      "<!(node -e \"require('fuse-shared-library/lib')\")",
+      "<!(node -e \"require('fuse-shared-library-darwin-debug/lib')\")",
     ],
     "sources": [
       "fuse-native.c"
@@ -18,7 +18,7 @@
     "dependencies": ["fuse"],
     "copies": [{
       "destination": "build/Release",
-      "files": [ "<!(node -e \"require('fuse-shared-library/lib')\")" ],
+      "files": [ "<!(node -e \"require('fuse-shared-library-darwin-debug/lib')\")" ],
     }]
   }]
 }
