@@ -8,7 +8,7 @@
     "test": "tape test/*.js",
     "prebuild": "prebuildify -a --strip",
     "prebuild-ia32": "prebuildify -a --strip --arch=ia32",
-    "configure": "sudo -E fuse-native configure"
+    "configure": "NODE=$(which node) && sudo -E $NODE ./bin.js configure"
   },
   "bin": {
     "fuse-native": "./bin.js"
