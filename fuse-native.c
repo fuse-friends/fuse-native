@@ -101,7 +101,6 @@ static const uint32_t op_link = 30;
 static const uint32_t op_symlink = 31;
 static const uint32_t op_mkdir = 32;
 static const uint32_t op_rmdir = 33;
-static const uint32_t op_destroy = 34;
 
 // Data structures
 
@@ -686,32 +685,6 @@ static void * fuse_native_init (struct fuse_conn_info *conn) {
   return l->fuse;
 }
 
-static void fuse_native_dispatch_destroy (uv_async_t* handle, fuse_thread_locals_t* l, fuse_thread_t* ft) {
-  FUSE_NATIVE_CALLBACK(ft->handlers[op_destroy], {
-    napi_value argv[2];
-    napi_create_external_buffer(env, sizeof(fuse_thread_locals_t), l, &fin, NULL, &(argv[0]));
-    napi_create_uint32(env, l->op, &(argv[1]));
-    NAPI_MAKE_CALLBACK(env, NULL, ctx, callback, 2, argv, NULL);
-  })
-}
-
-NAPI_METHOD(fuse_native_signal_destroy) {
-  NAPI_ARGV(2)
-  NAPI_ARGV_BUFFER_CAST(fuse_thread_locals_t *, l, 0);
-  NAPI_ARGV_INT32(res, 1);
-  l->res = res;
-  uv_sem_post(&(l->sem));
-  return NULL;
-}
-
-static void fuse_native_destroy (void *data) {
-  fuse_thread_locals_t *l = get_thread_locals();
-  l->op = op_init;
-  l->op_fn = fuse_native_dispatch_init;
-  uv_async_send(&(l->async));
-  uv_sem_wait(&(l->sem));
-}
-
 // Top-level dispatcher
 
 static void fuse_native_dispatch (uv_async_t* handle) {
@@ -830,7 +803,6 @@ NAPI_METHOD(fuse_native_mount) {
   if (implemented[op_mkdir]) ops.mkdir = fuse_native_mkdir;
   if (implemented[op_rmdir]) ops.rmdir = fuse_native_rmdir;
   if (implemented[op_init]) ops.init = fuse_native_init;
-  if (implemented[op_destroy]) ops.destroy = fuse_native_destroy;
 
   int _argc = (strcmp(mntopts, "-o") <= 0) ? 1 : 2;
   char *_argv[] = {
@@ -928,7 +900,6 @@ NAPI_INIT() {
   NAPI_EXPORT_FUNCTION(fuse_native_signal_symlink)
   NAPI_EXPORT_FUNCTION(fuse_native_signal_mkdir)
   NAPI_EXPORT_FUNCTION(fuse_native_signal_rmdir)
-  NAPI_EXPORT_FUNCTION(fuse_native_signal_destroy)
 
   NAPI_EXPORT_UINT32(op_getattr)
   NAPI_EXPORT_UINT32(op_init)
@@ -965,5 +936,4 @@ NAPI_INIT() {
   NAPI_EXPORT_UINT32(op_symlink)
   NAPI_EXPORT_UINT32(op_mkdir)
   NAPI_EXPORT_UINT32(op_rmdir)
-  NAPI_EXPORT_UINT32(op_destroy)
 }

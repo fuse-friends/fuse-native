@@ -125,9 +125,6 @@ const OpcodesAndDefaults = new Map([
   }],
   ['rmdir', {
     op: binding.op_rmdir
-  }],
-  ['destroy', {
-    op: binding.op_destroy
   }]
 ])
 
@@ -509,12 +506,6 @@ class Fuse extends Nanoresource {
 
   _op_rmdir (signal, path) {
     this.ops.rmdir(path, err => {
-      return signal(err)
-    })
-  }
-
-  _op_destroy (signal) {
-    this.ops.destroy(err => {
       return signal(err)
     })
   }
