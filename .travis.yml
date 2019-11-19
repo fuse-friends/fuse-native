@@ -17,7 +17,6 @@ addons:
     - g++-multilib
 
 os:
-- linux
 - osx
 
 before_install:
