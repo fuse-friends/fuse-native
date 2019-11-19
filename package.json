@@ -15,7 +15,7 @@
   },
   "gypfile": true,
   "dependencies": {
-    "fuse-shared-library-darwin": "^1.0.1",
+    "fuse-shared-library-darwin-debug": "^1.0.1",
     "nanoresource": "^1.2.0",
     "napi-macros": "^2.0.0",
     "node-gyp-build": "^3.2.2",
