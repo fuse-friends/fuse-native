@@ -4,7 +4,7 @@ const path = require('path')
 const { exec } = require('child_process')
 
 const Nanoresource = require('nanoresource')
-const { beforeMount, beforeUnmount, configure, unconfigure, isConfigured } = require('fuse-shared-library-darwin')
+const { beforeMount, beforeUnmount, configure, unconfigure, isConfigured } = require('fuse-shared-library-darwin-debug')
 
 const binding = require('node-gyp-build')(__dirname)
 
