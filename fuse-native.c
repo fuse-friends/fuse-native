@@ -32,6 +32,7 @@
 #define FUSE_NATIVE_HANDLER(name, blk)\
   fuse_thread_locals_t *l = get_thread_locals();\
   l->op = op_##name;\
+  l->op_fn = fuse_native_dispatch_##name;\
   blk\
   uv_async_send(&(l->async));\
   uv_sem_wait(&(l->sem));\
@@ -124,6 +125,7 @@ typedef struct {
 typedef struct {
   // Opcode
   uint32_t op;
+  void *op_fn;
 
   // Payloads
   const char *path;
@@ -728,6 +730,7 @@ NAPI_METHOD(fuse_native_signal_init) {
 static void * fuse_native_init (struct fuse_conn_info *conn) {
   fuse_thread_locals_t *l = get_thread_locals();
   l->op = op_init;
+  l->op_fn = fuse_native_dispatch_init;
   uv_async_send(&(l->async));
   uv_sem_wait(&(l->sem));
   return l->fuse;
@@ -754,55 +757,18 @@ NAPI_METHOD(fuse_native_signal_destroy) {
 static void fuse_native_destroy (void *data) {
   fuse_thread_locals_t *l = get_thread_locals();
   l->op = op_init;
+  l->op_fn = fuse_native_dispatch_init;
   uv_async_send(&(l->async));
   uv_sem_wait(&(l->sem));
 }
 
 // Top-level dispatcher
-// TODO: Generate this with a macro
 
 static void fuse_native_dispatch (uv_async_t* handle) {
   fuse_thread_locals_t *l = (fuse_thread_locals_t *) handle->data;
   fuse_thread_t *ft = l->fuse;
-
-  // TODO: Either use a function pointer (like ft->handlers[op]) or generate with a macro.
-  switch (l->op) {
-    case (op_init): return fuse_native_dispatch_init(handle, l, ft);
-    case (op_statfs): return fuse_native_dispatch_statfs(handle, l, ft);
-    case (op_fgetattr): return fuse_native_dispatch_fgetattr(handle, l, ft);
-    case (op_getattr): return fuse_native_dispatch_getattr(handle, l, ft);
-    case (op_readdir): return fuse_native_dispatch_readdir(handle, l, ft);
-    case (op_open): return fuse_native_dispatch_open(handle, l, ft);
-    case (op_create): return fuse_native_dispatch_create(handle, l, ft);
-    case (op_access): return fuse_native_dispatch_access(handle, l, ft);
-    case (op_utimens): return fuse_native_dispatch_utimens(handle, l, ft);
-    case (op_release): return fuse_native_dispatch_release(handle, l, ft);
-    case (op_releasedir): return fuse_native_dispatch_releasedir(handle, l, ft);
-    case (op_read): return fuse_native_dispatch_read(handle, l, ft);
-    case (op_write): return fuse_native_dispatch_write(handle, l, ft);
-    case (op_getxattr): return fuse_native_dispatch_getxattr(handle, l, ft);
-    case (op_setxattr): return fuse_native_dispatch_setxattr(handle, l, ft);
-    case (op_listxattr): return fuse_native_dispatch_listxattr(handle, l, ft);
-    case (op_removexattr): return fuse_native_dispatch_removexattr(handle, l, ft);
-    case (op_flush): return fuse_native_dispatch_flush(handle, l, ft);
-    case (op_fsync): return fuse_native_dispatch_fsync(handle, l, ft);
-    case (op_fsyncdir): return fuse_native_dispatch_fsyncdir(handle, l, ft);
-    case (op_truncate): return fuse_native_dispatch_truncate(handle, l, ft);
-    case (op_ftruncate): return fuse_native_dispatch_ftruncate(handle, l, ft);
-    case (op_readlink): return fuse_native_dispatch_readlink(handle, l, ft);
-    case (op_chown): return fuse_native_dispatch_chown(handle, l, ft);
-    case (op_chmod): return fuse_native_dispatch_chmod(handle, l, ft);
-    case (op_mknod): return fuse_native_dispatch_mknod(handle, l, ft);
-    case (op_opendir): return fuse_native_dispatch_opendir(handle, l, ft);
-    case (op_unlink): return fuse_native_dispatch_unlink(handle, l, ft);
-    case (op_rename): return fuse_native_dispatch_rename(handle, l, ft);
-    case (op_link): return fuse_native_dispatch_link(handle, l, ft);
-    case (op_symlink): return fuse_native_dispatch_symlink(handle, l, ft);
-    case (op_mkdir): return fuse_native_dispatch_mkdir(handle, l, ft);
-    case (op_rmdir): return fuse_native_dispatch_rmdir(handle, l, ft);
-    case (op_destroy): return fuse_native_dispatch_destroy(handle, l, ft);
-    default: return;
-  }
+  void (*fn)(uv_async_t *, fuse_thread_locals_t *, fuse_thread_t *) = l->op_fn;
+  fn(handle, l, ft);
 }
 
 static void fuse_native_async_init (uv_async_t* handle) {
