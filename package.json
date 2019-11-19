@@ -8,7 +8,10 @@
     "test": "tape test/*.js",
     "prebuild": "prebuildify -a --strip",
     "prebuild-ia32": "prebuildify -a --strip --arch=ia32",
-    "configure": "sudo -E node bin.js configure"
+    "configure": "sudo -E fuse-native configure"
+  },
+  "bin": {
+    "fuse-native": "./bin.js"
   },
   "gypfile": true,
   "dependencies": {
