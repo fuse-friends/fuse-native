@@ -1,14 +1,15 @@
-var mnt = require('./fixtures/mnt')
-var tape = require('tape')
+const mnt = require('./fixtures/mnt')
+const tape = require('tape')
 
-var Fuse = require('../')
+const Fuse = require('../')
+const { unmount } = require('./helpers')
 
 tape('mount', function (t) {
   const fuse = new Fuse(mnt, {}, { force: true })
   fuse.mount(function (err) {
     t.error(err, 'no error')
     t.ok(true, 'works')
-    fuse.unmount(function () {
+    unmount(fuse, function () {
       t.end()
     })
   })
@@ -21,11 +22,11 @@ tape('mount + unmount + mount', function (t) {
   fuse1.mount(function (err) {
     t.error(err, 'no error')
     t.ok(true, 'works')
-    fuse1.unmount(function () {
+    unmount(fuse1, function () {
       fuse2.mount(function (err) {
         t.error(err, 'no error')
         t.ok(true, 'works')
-        fuse2.unmount(function () {
+        unmount(fuse2, function () {
           t.end()
         })
       })
@@ -39,7 +40,7 @@ tape('mount + unmount + mount with same instance fails', function (t) {
   fuse.mount(function (err) {
     t.error(err, 'no error')
     t.ok(true, 'works')
-    fuse.unmount(function () {
+    unmount(fuse, function () {
       fuse.mount(function (err) {
         t.ok(err, 'had error')
         t.end()

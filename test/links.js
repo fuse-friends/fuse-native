@@ -1,6 +1,7 @@
 const tape = require('tape')
 const fs = require('fs')
 const path = require('path')
+const { unmount } = require('./helpers')
 
 const Fuse = require('../')
 const mnt = require('./fixtures/mnt')
@@ -53,7 +54,7 @@ tape('readlink', function (t) {
             t.error(err, 'no error')
             t.same(buf, Buffer.from('hello world'), 'can read link content')
 
-            fuse.unmount(function () {
+            unmount(fuse, function () {
               t.end()
             })
           })

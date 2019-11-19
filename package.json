@@ -9,8 +9,12 @@
   "scripts": {
     "install": "node-gyp-build",
     "test": "tape test/*.js",
-    "prebuild": "prebuildify -a --strip",
-    "prebuild-ia32": "prebuildify -a --strip --arch=ia32"
+    "prebuild": "prebuildify --napi --strip",
+    "prebuild-ia32": "prebuildify --napi --strip --arch=ia32",
+    "configure": "NODE=$(which node) && sudo -E $NODE ./bin.js configure || true"
+  },
+  "bin": {
+    "fuse-native": "./bin.js"
   },
   "gypfile": true,
   "dependencies": {
@@ -22,6 +26,7 @@
   },
   "devDependencies": {
     "concat-stream": "^2.0.0",
+    "prebuildify": "^3.0.4",
     "standard": "^13.1.0",
     "tape": "^4.11.0"
   },

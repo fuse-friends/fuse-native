@@ -5,6 +5,7 @@ const path = require('path')
 const Fuse = require('../')
 const mnt = require('./fixtures/mnt')
 const stat = require('./fixtures/stat')
+const { unmount } = require('./helpers')
 
 tape('write', function (t) {
   var created = false
@@ -48,7 +49,7 @@ tape('write', function (t) {
       t.error(err, 'no error')
       t.same(data.slice(0, size), Buffer.from('hello world'), 'data was written')
 
-      fuse.unmount(function () {
+      unmount(fuse, function () {
         t.end()
       })
     })
