@@ -75,6 +75,21 @@ Create a new `Fuse` object.
 ```
 Additionally, all (FUSE-specific options)[http://man7.org/linux/man-pages/man8/mount.fuse.8.html] will be passed to the underlying FUSE module (though we use camel casing instead of snake casing).
 
+#### `Fuse.isConfigured(cb)`
+
+Returns `true` if FUSE has been configured on your machine and ready to be used, `false` otherwise.
+
+#### `Fuse.configure(cb)`
+
+Configures FUSE on your machine by enabling the FUSE kernel extension.
+You usually want to do this as part of an installation phase for your app.
+Might require `sudo` access.
+
+#### `Fuse.unconfigure(cb)`
+
+Unconfigures FUSE on your machine. Basically undos any change the above
+method does.
+
 ### FUSE API
 Most of the [FUSE api](http://fuse.sourceforge.net/doxygen/structfuse__operations.html) is supported. In general the callback for each op should be called with `cb(returnCode, [value])` where the return code is a number (`0` for OK and `< 0` for errors). See below for a list of POSIX error codes.
 
