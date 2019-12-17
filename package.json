@@ -3,6 +3,9 @@
   "version": "0.0.0",
   "description": "Fully maintained fuse bindings for Node that aims to cover the entire FUSE api",
   "main": "index.js",
+  "bin": {
+    "fuse-native": "./bin.js"
+  },
   "scripts": {
     "install": "node-gyp-build",
     "test": "tape test/*.js",
