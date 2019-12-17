@@ -6,6 +6,7 @@ const concat = require('concat-stream')
 const Fuse = require('../')
 const mnt = require('./fixtures/mnt')
 const stat = require('./fixtures/stat')
+const { unmount } = require('./helpers')
 
 tape('read', function (t) {
   var ops = {
@@ -23,7 +24,6 @@ tape('read', function (t) {
       return process.nextTick(cb, 0, 42)
     },
     release: function (path, fd, cb) {
-      console.log('IN JS RELEASE')
       t.same(fd, 42, 'fd was passed to release')
       return process.nextTick(cb, 0)
     },
@@ -53,7 +53,7 @@ tape('read', function (t) {
           fs.createReadStream(path.join(mnt, 'test'), { start: 6, end: 10 }).pipe(concat(function (buf) {
             t.same(buf, Buffer.from('world'), 'partial read file + start offset')
 
-            fuse.unmount(function () {
+            unmount(fuse, function () {
               t.end()
             })
           }))
