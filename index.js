@@ -207,16 +207,16 @@ class Fuse extends Nanoresource {
     return handlers
 
     function makeHandler (name, op, defaults, nativeSignal) {
-      return function () {
-        const boundSignal = signal.bind(null, arguments[0])
+      return function (nativeHandler, opCode, ...args) {
+        const boundSignal = signal.bind(null, nativeHandler)
         const funcName = `_op_${name}`
         if (!self[funcName] || !self._implemented.has(op)) return boundSignal(-1, ...defaults)
-        return self[funcName].apply(self, [boundSignal, ...[...arguments].slice(2)])
+        return self[funcName].apply(self, [boundSignal, ...args])
       }
 
       function signal (nativeHandler, err, ...args) {
         var arr = [nativeHandler, err, ...args]
-        if (defaults && (!args || !args.length)) arr = arr.concat(defaults)
+        if (defaults && (!args.length)) arr = arr.concat(defaults)
         return process.nextTick(nativeSignal, ...arr)
       }
     }
