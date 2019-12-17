@@ -56,6 +56,7 @@ In order to create a FUSE mountpoint, you first need to create a `Fuse` object t
 Create a new `Fuse` object.
 
 `mnt` is the string path of your desired mountpoint.
+
 `handlers` is an object mapping syscall names to implementations. The complete list of available syscalls is described below. As an example, if you wanted to implement a filesystem that only supports `getattr`, your handle object would look like:
 ```js
 {
@@ -67,7 +68,12 @@ Create a new `Fuse` object.
 }
 ```
 
-The following FUSE API methods are supported:
+`opts` can be include:
+```
+  displayFolder: 'Folder Name', // Add a name/icon to the mount volume on OSX,
+  debug: false,  // Enable detailed tracing of operations.
+```
+Additionally, all (FUSE-specific options)[http://man7.org/linux/man-pages/man8/mount.fuse.8.html] will be passed to the underlying FUSE module (though we use camel casing instead of snake casing).
 
 ### FUSE API
 Most of the [FUSE api](http://fuse.sourceforge.net/doxygen/structfuse__operations.html) is supported. In general the callback for each op should be called with `cb(returnCode, [value])` where the return code is a number (`0` for OK and `< 0` for errors). See below for a list of POSIX error codes.
