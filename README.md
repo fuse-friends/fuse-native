@@ -90,6 +90,8 @@ Might require `sudo` access.
 Unconfigures FUSE on your machine. Basically undos any change the above
 method does.
 
+See the CLI section below on how to run these commands from the command line if you prefer doing that.
+
 ### FUSE API
 Most of the [FUSE api](http://fuse.sourceforge.net/doxygen/structfuse__operations.html) is supported. In general the callback for each op should be called with `cb(returnCode, [value])` where the return code is a number (`0` for OK and `< 0` for errors). See below for a list of POSIX error codes.
 
@@ -306,6 +308,17 @@ Called when a new directory is being created
 #### `ops.rmdir(path, cb)`
 
 Called when a directory is being removed
+
+## CLI
+
+There is a CLI tool available to help you configure the FUSE kernel extension setup
+if you don't want to use the JavaScript API for that
+
+```
+npm install -g fuse-native
+fuse-native is-configured # checks if the kernel extension is already configured
+fuse-native configure # configures the kernel extension
+```
 
 ## License
 
