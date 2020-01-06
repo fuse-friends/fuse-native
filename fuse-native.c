@@ -561,17 +561,17 @@ FUSE_METHOD_VOID(truncate, 2, 0, (const char *path, off_t size), {
   napi_create_uint32(env, l->len, &(argv[3]));
 })
 
-FUSE_METHOD_VOID(ftruncate, 2, 0, (const char *path, off_t size, struct fuse_file_info *info), {
+FUSE_METHOD_VOID(ftruncate, 3, 0, (const char *path, off_t size, struct fuse_file_info *info), {
   l->path = path;
   l->len = size;
   l->info = info;
 }, {
   napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
-  napi_create_uint32(env, l->len, &(argv[3]));
+  napi_create_uint32(env, l->len, &(argv[4]));
   if (l->info != NULL) {
-    napi_create_uint32(env, l->info->fh, &(argv[4]));
+    napi_create_uint32(env, l->info->fh, &(argv[3]));
   } else {
-    napi_create_uint32(env, 0, &(argv[4]));
+    napi_create_uint32(env, 0, &(argv[3]));
   }
 })
 
