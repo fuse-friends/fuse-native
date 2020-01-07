@@ -709,8 +709,8 @@ function getStatArray (stat) {
   ints[8] = (stat && stat.blksize) || 0
   ints[9] = (stat && stat.blocks) || 0
   setDoubleInt(ints, 10, toDateMS(stat && stat.atime))
-  setDoubleInt(ints, 12, toDateMS(stat && stat.ctime))
-  setDoubleInt(ints, 14, toDateMS(stat && stat.mtime))
+  setDoubleInt(ints, 12, toDateMS(stat && stat.mtime))
+  setDoubleInt(ints, 14, toDateMS(stat && stat.ctime))
 
   return ints
 }
