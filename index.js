@@ -689,6 +689,12 @@ function getDoubleInt (arr, idx) {
   return num
 }
 
+function toDateMS (st) {
+  if (typeof st === 'number') return st
+  if (!st) return Date.now()
+  return st.getTime()
+}
+
 function getStatArray (stat) {
   const ints = new Uint32Array(16)
 
@@ -702,9 +708,9 @@ function getStatArray (stat) {
   ints[7] = (stat && stat.rdev) || 0
   ints[8] = (stat && stat.blksize) || 0
   ints[9] = (stat && stat.blocks) || 0
-  setDoubleInt(ints, 10, (stat && stat.atim) || Date.now())
-  setDoubleInt(ints, 12, (stat && stat.atim) || Date.now())
-  setDoubleInt(ints, 14, (stat && stat.atim) || Date.now())
+  setDoubleInt(ints, 10, toDateMS(stat && stat.atime))
+  setDoubleInt(ints, 12, toDateMS(stat && stat.ctime))
+  setDoubleInt(ints, 14, toDateMS(stat && stat.mtime))
 
   return ints
 }
