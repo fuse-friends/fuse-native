@@ -212,17 +212,17 @@ static void populate_stat (uint32_t *ints, struct stat* stat) {
 }
 
 static void populate_statvfs (uint32_t *ints, struct statvfs* statvfs) {
-  statvfs->f_bsize =  *ints++;
-  statvfs->f_frsize =  *ints++;
-  statvfs->f_blocks =  *ints++;
-  statvfs->f_bfree =  *ints++;
-  statvfs->f_bavail =  *ints++;
-  statvfs->f_files =  *ints++;
-  statvfs->f_ffree =  *ints++;
-  statvfs->f_favail =  *ints++;
-  statvfs->f_fsid =  *ints++;
-  statvfs->f_flag =  *ints++;
-  statvfs->f_namemax =  *ints++;
+  statvfs->f_bsize = *ints++;
+  statvfs->f_frsize = *ints++;
+  statvfs->f_blocks = *ints++;
+  statvfs->f_bfree = *ints++;
+  statvfs->f_bavail = *ints++;
+  statvfs->f_files = *ints++;
+  statvfs->f_ffree = *ints++;
+  statvfs->f_favail = *ints++;
+  statvfs->f_fsid = *ints++;
+  statvfs->f_flag = *ints++;
+  statvfs->f_namemax = *ints++;
 }
 
 // Methods
@@ -434,7 +434,7 @@ FUSE_METHOD(readdir, 1, 2, (const char *path, void *buf, fuse_fill_dir_t filler,
 
 #ifdef __APPLE__
 
-FUSE_METHOD_VOID(setxattr, 6, 0, (const char *path, const char *name, const char *value, size_t size, int flags, uint32_t position), {
+FUSE_METHOD_VOID(setxattr, 5, 0, (const char *path, const char *name, const char *value, size_t size, int flags, uint32_t position), {
   l->path = path;
   l->name = name;
   l->value = value;
@@ -444,13 +444,12 @@ FUSE_METHOD_VOID(setxattr, 6, 0, (const char *path, const char *name, const char
 }, {
   napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
   napi_create_string_utf8(env, l->name, NAPI_AUTO_LENGTH, &(argv[3]));
-  napi_create_string_utf8(env, l->value, NAPI_AUTO_LENGTH, &(argv[4]));
-  napi_create_uint32(env, l->size, &(argv[5]));
+  napi_create_external_buffer(env, l->size, (char *) l->value, &fin, NULL, &(argv[4]));
+  napi_create_uint32(env, l->position, &(argv[5]));
   napi_create_uint32(env, l->flags, &(argv[6]));
-  napi_create_uint32(env, l->position, &(argv[7]));
 })
 
-FUSE_METHOD_VOID(getxattr, 5, 0, (const char *path, const char *name, char *value, size_t size, uint32_t position), {
+FUSE_METHOD_VOID(getxattr, 4, 0, (const char *path, const char *name, char *value, size_t size, uint32_t position), {
   l->path = path;
   l->name = name;
   l->value = value;
@@ -459,9 +458,8 @@ FUSE_METHOD_VOID(getxattr, 5, 0, (const char *path, const char *name, char *valu
 }, {
   napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
   napi_create_string_utf8(env, l->name, NAPI_AUTO_LENGTH, &(argv[3]));
-  napi_create_string_utf8(env, l->value, NAPI_AUTO_LENGTH, &(argv[4]));
-  napi_create_uint32(env, l->size, &(argv[5]));
-  napi_create_uint32(env, l->position, &(argv[6]));
+  napi_create_external_buffer(env, l->size, (char *) l->value, &fin, NULL, &(argv[4]));
+  napi_create_uint32(env, l->position, &(argv[5]));
 })
 
 #else
@@ -475,8 +473,8 @@ FUSE_METHOD_VOID(setxattr, 5, 0, (const char *path, const char *name, const char
 }, {
   napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
   napi_create_string_utf8(env, l->name, NAPI_AUTO_LENGTH, &(argv[3]));
-  napi_create_string_utf8(env, l->value, NAPI_AUTO_LENGTH, &(argv[4]));
-  napi_create_uint32(env, l->size, &(argv[5]));
+  napi_create_external_buffer(env, l->size, (char *) l->value, &fin, NULL, &(argv[4]));
+  napi_create_uint32(env, 0, &(argv[5])); // normalize apis between mac and linux
   napi_create_uint32(env, l->flags, &(argv[6]));
 })
 
@@ -488,20 +486,19 @@ FUSE_METHOD_VOID(getxattr, 4, 0, (const char *path, const char *name, char *valu
 }, {
   napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
   napi_create_string_utf8(env, l->name, NAPI_AUTO_LENGTH, &(argv[3]));
-  napi_create_string_utf8(env, l->value, NAPI_AUTO_LENGTH, &(argv[4]));
-  napi_create_uint32(env, l->size, &(argv[5]));
+  napi_create_external_buffer(env, l->size, (char *) l->value, &fin, NULL, &(argv[4]));
+  napi_create_uint32(env, 0, &(argv[5]));
 })
 
 #endif
 
-FUSE_METHOD_VOID(listxattr, 3,  0, (const char *path, char *list, size_t size), {
+FUSE_METHOD_VOID(listxattr, 2, 0, (const char *path, char *list, size_t size), {
   l->path = path;
   l->list = list;
   l->size = size;
 }, {
   napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
   napi_create_external_buffer(env, l->size, l->list, &fin, NULL, &(argv[3]));
-  napi_create_uint32(env, l->size, &(argv[4]));
 })
 
 FUSE_METHOD_VOID(removexattr, 2, 0, (const char *path, const char *name), {

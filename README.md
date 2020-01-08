@@ -199,21 +199,30 @@ Called when the mode of a path is being changed
 
 Called when the a new device file is being made.
 
-#### `ops.setxattr(path, name, buffer, length, offset, flags, cb)`
+#### `ops.setxattr(path, name, value, position, flags, cb)`
 
 Called when extended attributes is being set (see the extended docs for your platform).
-Currently you can read the attribute value being set in `buffer` at `offset`.
 
-#### `ops.getxattr(path, name, buffer, length, offset, cb)`
+Copy the `value` buffer somewhere to store it.
+
+The position argument is mostly a legacy argument only used on MacOS but see the getxattr docs
+on Mac for more on that (you probably don't need to use that).
+
+#### `ops.getxattr(path, name, position, cb)`
 
 Called when extended attributes is being read.
-Currently you have to write the result to the provided `buffer` at `offset`.
 
-#### `ops.listxattr(path, buffer, length, cb)`
+Return the extended attribute as the second argument to the callback (needs to be a buffer).
+If no attribute is stored return `null` as the second argument.
+
+The position argument is mostly a legacy argument only used on MacOS but see the getxattr docs
+on Mac for more on that (you probably don't need to use that).
+
+#### `ops.listxattr(path, cb)`
 
 Called when extended attributes of a path are being listed.
-`buffer` should be filled with the extended attribute names as *null-terminated* strings, one after the other, up to a total of `length` in length. (`ERANGE` should be passed to the callback if `length` is insufficient.)
-The size of buffer required to hold all the names should be passed to the callback either on success, or if the supplied `length` was zero.
+
+Return a list of strings of the names of the attributes you have stored as the second argument to the callback.
 
 #### `ops.removexattr(path, name, cb)`
 

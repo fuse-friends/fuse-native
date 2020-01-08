@@ -396,20 +396,42 @@ class Fuse extends Nanoresource {
     })
   }
 
-  _op_setxattr (signal, path, name, value, size, position, flags) {
-    this.ops.setxattr(path, name, value, size, position, flags, err => {
+  _op_setxattr (signal, path, name, value, position, flags) {
+    this.ops.setxattr(path, name, value, position, flags, err => {
       return signal(err)
     })
   }
 
-  _op_getxattr (signal, path, name, value, size, position) {
-    this.ops.getxattr(path, name, value, size, position, err => {
+  _op_getxattr (signal, path, name, valueBuf, position) {
+    this.ops.getxattr(path, name, position, (err, value) => {
+      if (!err) {
+        if (!value) return signal(IS_OSX ? -93 : -61)
+        value.copy(valueBuf)
+        return signal(value.length)
+      }
       return signal(err)
     })
   }
 
-  _op_listxattr (signal, path, list, size) {
-    this.ops.listxattr(path, list, size, err => {
+  _op_listxattr (signal, path, listBuf) {
+    this.ops.listxattr(path, (err, list) => {
+      if (list && !err) {
+        if (!listBuf.length) {
+          let size = 0
+          for (const name of list) size += Buffer.byteLength(name) + 1
+          size += 128 // fuse yells if we do not signal room for some mac stuff also
+          return signal(size)
+        }
+
+        let ptr = 0
+        for (const name of list) {
+          listBuf.write(name, ptr)
+          ptr += Buffer.byteLength(name)
+          listBuf[ptr++] = 0
+        }
+
+        return signal(ptr)
+      }
       return signal(err)
     })
   }
