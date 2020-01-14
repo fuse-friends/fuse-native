@@ -65,7 +65,7 @@ const ops = {
   }
 }
 
-const fuse = new Fuse('./mnt', ops, { debug: true })
+const fuse = new Fuse('./mnt', ops, { debug: true, displayFolder: true })
 fuse.mount(err => {
   if (err) throw err
   console.log('filesystem mounted on ' + fuse.mnt)
