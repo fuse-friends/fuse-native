@@ -65,6 +65,13 @@
 #define FUSE_METHOD_VOID(name, callbackArgs, signalArgs, signature, callBlk, callbackBlk)\
   FUSE_METHOD(name, callbackArgs, signalArgs, signature, callBlk, callbackBlk, {})
 
+#define FUSE_SIZE_T_INTS_ARGV(n, pos)\
+  uint32_t low##pos = n % 4294967296;\
+  uint32_t high##pos = (n - low##pos) / 4294967296;\
+  napi_create_uint32(env, low##pos, &(argv[pos]));\
+  napi_create_uint32(env, high##pos, &(argv[pos + 1]));
+
+
 // Opcodes
 
 static const uint32_t op_init = 0;
@@ -141,8 +148,8 @@ typedef struct {
   dev_t dev;
   uid_t uid;
   gid_t gid;
-  uint32_t atim[2];
-  uint32_t mtim[2];
+  size_t atime;
+  size_t mtime;
   int32_t res;
 
   // Extended attributes
@@ -174,40 +181,45 @@ static fuse_thread_locals_t* get_thread_locals ();
 // TODO: Extract into a separate file.
 
 static void fin (napi_env env, void *fin_data, void* fin_hint) {
-  //exit(0);
+  // noop
 }
 
-static void to_timespec (struct timespec* ts, uint32_t* int_ptr) {
-  long unsigned int ms = *int_ptr + (*(int_ptr + 1) * 4294967296);
+static size_t ints_to_size_t (uint32_t **ints) {
+  size_t low = *((*ints)++);
+  size_t high = *((*ints)++);
+  return high * 4294967296 + low;
+}
+
+static void ints_to_timespec (struct timespec* ts, uint32_t** ints) {
+  size_t ms = ints_to_size_t(ints);
   ts->tv_sec = ms / 1000;
   ts->tv_nsec = (ms % 1000) * 1000000;
 }
 
-static void from_timespec(const struct timespec* ts, uint32_t* int_ptr) {
-  long unsigned int ms = (ts->tv_sec * 1000) + (ts->tv_nsec / 1000000);
-  *int_ptr = ms % 4294967296;
-  *(int_ptr + 1) = (ms - *int_ptr) / 4294967296;
+static size_t timespec_to_size_t (const struct timespec* ts) {
+  size_t ms = (ts->tv_sec * 1000) + (ts->tv_nsec / 1000000);
+  return ms;
 }
 
 static void populate_stat (uint32_t *ints, struct stat* stat) {
   stat->st_mode = *ints++;
   stat->st_uid = *ints++;
   stat->st_gid = *ints++;
-  stat->st_size = *ints++;
+  stat->st_size = ints_to_size_t(&ints);
   stat->st_dev = *ints++;
   stat->st_nlink = *ints++;
   stat->st_ino = *ints++;
   stat->st_rdev = *ints++;
   stat->st_blksize = *ints++;
-  stat->st_blocks = *ints++;
+  stat->st_blocks = ints_to_size_t(&ints);
 #ifdef __APPLE__
-  to_timespec(&stat->st_atimespec, ints);
-  to_timespec(&stat->st_mtimespec, ints + 2);
-  to_timespec(&stat->st_ctimespec, ints + 4);
+  ints_to_timespec(&stat->st_atimespec, &ints);
+  ints_to_timespec(&stat->st_mtimespec, &ints);
+  ints_to_timespec(&stat->st_ctimespec, &ints);
 #else
-  to_timespec(&stat->st_atim, ints);
-  to_timespec(&stat->st_mtim, ints + 2);
-  to_timespec(&stat->st_ctim, ints + 4);
+  ints_to_timespec(&stat->st_atim, &ints);
+  ints_to_timespec(&stat->st_mtim, &ints);
+  ints_to_timespec(&stat->st_ctim, &ints);
 #endif
 }
 
@@ -321,14 +333,14 @@ FUSE_METHOD(create, 2, 1, (const char *path, mode_t mode, struct fuse_file_info 
   }
 })
 
-FUSE_METHOD_VOID(utimens, 3, 0, (const char *path, const struct timespec tv[2]), {
+FUSE_METHOD_VOID(utimens, 5, 0, (const char *path, const struct timespec tv[2]), {
   l->path = path;
-  from_timespec(&tv[0], l->atim);
-  from_timespec(&tv[1], l->mtim);
+  l->atime = timespec_to_size_t(&tv[0]);
+  l->mtime = timespec_to_size_t(&tv[1]);
 }, {
   napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
-  napi_create_external_arraybuffer(env, l->atim, 2 * sizeof(uint32_t), &fin, NULL, &argv[3]);
-  napi_create_external_arraybuffer(env, l->mtim, 2 * sizeof(uint32_t), &fin, NULL, &argv[4]);
+  FUSE_SIZE_T_INTS_ARGV(l->atime, 3)
+  FUSE_SIZE_T_INTS_ARGV(l->atime, 5)
 })
 
 FUSE_METHOD_VOID(release, 2, 0, (const char *path, struct fuse_file_info *info), {
@@ -355,7 +367,7 @@ FUSE_METHOD_VOID(releasedir, 2, 0, (const char *path, struct fuse_file_info *inf
   }
 })
 
-FUSE_METHOD(read, 5, 1, (const char *path, char *buf, size_t len, off_t offset, struct fuse_file_info *info), {
+FUSE_METHOD(read, 6, 1, (const char *path, char *buf, size_t len, off_t offset, struct fuse_file_info *info), {
   l->path = path;
   l->buf = buf;
   l->len = len;
@@ -366,12 +378,12 @@ FUSE_METHOD(read, 5, 1, (const char *path, char *buf, size_t len, off_t offset, 
   napi_create_uint32(env, l->info->fh, &(argv[3]));
   napi_create_external_buffer(env, l->len, (char *) l->buf, &fin, NULL, &(argv[4]));
   napi_create_uint32(env, l->len, &(argv[5]));
-  napi_create_uint32(env, l->offset, &(argv[6]));
+  FUSE_SIZE_T_INTS_ARGV(l->offset, 6)
 }, {
   // TODO: handle bytes processed?
 })
 
-FUSE_METHOD(write, 5, 1, (const char *path, const char *buf, size_t len, off_t offset, struct fuse_file_info *info), {
+FUSE_METHOD(write, 6, 1, (const char *path, const char *buf, size_t len, off_t offset, struct fuse_file_info *info), {
   l->path = path;
   l->buf = buf;
   l->len = len;
@@ -382,7 +394,7 @@ FUSE_METHOD(write, 5, 1, (const char *path, const char *buf, size_t len, off_t o
   napi_create_uint32(env, l->info->fh, &(argv[3]));
   napi_create_external_buffer(env, l->len, (char *) l->buf, &fin, NULL, &(argv[4]));
   napi_create_uint32(env, l->len, &(argv[5]));
-  napi_create_uint32(env, l->offset, &(argv[6]));
+  FUSE_SIZE_T_INTS_ARGV(l->offset, 6)
 }, {
   // TODO: handle bytes processed?
 })
@@ -550,26 +562,26 @@ FUSE_METHOD_VOID(fsyncdir, 3, 0, (const char *path, int datasync, struct fuse_fi
 })
 
 
-FUSE_METHOD_VOID(truncate, 2, 0, (const char *path, off_t size), {
+FUSE_METHOD_VOID(truncate, 3, 0, (const char *path, off_t size), {
   l->path = path;
   l->len = size;
 }, {
   napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
-  napi_create_uint32(env, l->len, &(argv[3]));
+  FUSE_SIZE_T_INTS_ARGV(l->len, 3)
 })
 
-FUSE_METHOD_VOID(ftruncate, 3, 0, (const char *path, off_t size, struct fuse_file_info *info), {
+FUSE_METHOD_VOID(ftruncate, 4, 0, (const char *path, off_t size, struct fuse_file_info *info), {
   l->path = path;
   l->len = size;
   l->info = info;
 }, {
   napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
-  napi_create_uint32(env, l->len, &(argv[4]));
   if (l->info != NULL) {
     napi_create_uint32(env, l->info->fh, &(argv[3]));
   } else {
     napi_create_uint32(env, 0, &(argv[3]));
   }
+  FUSE_SIZE_T_INTS_ARGV(l->len, 4)
 })
 
 FUSE_METHOD(readlink, 1, 1, (const char *path, char *linkname, size_t len), {
