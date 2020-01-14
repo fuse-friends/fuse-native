@@ -8,7 +8,7 @@ const mnt = require('./fixtures/mnt')
 const stat = require('./fixtures/stat')
 const { unmount } = require('./helpers')
 
-tape('read', function (t) {
+tape('read and write big file', function (t) {
   let size = 0
   const reads = [0, 4 * 1024 * 1024 * 1024, 6 * 1024 * 1024 * 1024]
   const writes = [0, 4 * 1024 * 1024 * 1024, 6 * 1024 * 1024 * 1024]
@@ -58,7 +58,7 @@ tape('read', function (t) {
 
   run(
     (_, cb) => fuse.mount(cb),
-    open,
+    open('w+'),
     (_, cb) => fs.fstat(fd, cb),
     checkSize(0),
     (_, cb) => fs.ftruncate(fd, 4 * 1024 * 1024 * 1024 + 1, cb),
@@ -73,7 +73,7 @@ tape('read', function (t) {
     (_, cb) => fs.fstat(fd, cb),
     checkSize(6 * 1024 * 1024 * 1024 + 4096),
     (_, cb) => fs.close(fd, cb),
-    open,
+    open('a+'),
     (_, cb) => fs.read(fd, Buffer.alloc(4096), 0, 4096, 0, cb),
     (_, cb) => fs.read(fd, Buffer.alloc(4096), 0, 4096, 4 * 1024 * 1024 * 1024, cb),
     (_, cb) => fs.read(fd, Buffer.alloc(4096), 0, 4096, 6 * 1024 * 1024 * 1024, cb),
@@ -86,11 +86,13 @@ tape('read', function (t) {
     }
   )
 
-  function open (_, cb) {
-    fs.open(path.join(mnt, 'test'), 'a+', function (_, res) {
-      fd = res
-      cb()
-    })
+  function open (mode) {
+    return (_, cb) => {
+      fs.open(path.join(mnt, 'test'), mode, function (_, res) {
+        fd = res
+        cb()
+      })
+    }
   }
 
   function checkSize (n) {
