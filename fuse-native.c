@@ -861,6 +861,7 @@ NAPI_METHOD(fuse_native_unmount) {
     // pthread_join(ft->thread, NULL);
   }
 
+  // TODO: fix the async holding the loop
   uv_unref((uv_handle_t *) &(ft->async));
   ft->mounted--;
 
