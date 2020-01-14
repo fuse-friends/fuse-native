@@ -357,8 +357,8 @@ class Fuse extends Nanoresource {
   }
 
   _op_utimens (signal, path, atimeLow, atimeHigh, mtimeLow, mtimeHigh) {
-    const atime = getDoubleInt(atimeLow, atimeHigh)
-    const mtime = getDoubleInt(mtimeLow, mtimeHigh)
+    const atime = getDoubleArg(atimeLow, atimeHigh)
+    const mtime = getDoubleArg(mtimeLow, mtimeHigh)
     this.ops.utimens(path, atime, mtime, err => {
       return signal(err)
     })
@@ -704,11 +704,6 @@ function getStatfsArray (statfs) {
 function setDoubleInt (arr, idx, num) {
   arr[idx] = num % 4294967296
   arr[idx + 1] = (num - arr[idx]) / 4294967296
-}
-
-function getDoubleInt (arr, idx) {
-  arr = new Uint32Array(arr)
-  return arr[idx] + arr[idx + 1] * 4294967296
 }
 
 function getDoubleArg (a, b) {
