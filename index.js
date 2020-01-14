@@ -356,10 +356,10 @@ class Fuse extends Nanoresource {
     })
   }
 
-  _op_utimens (signal, path, atim, mtim) {
-    atim = getDoubleInt(atim, 0)
-    mtim = getDoubleInt(mtim, 0)
-    this.ops.utimens(path, atim, mtim, err => {
+  _op_utimens (signal, path, atimeLow, atimeHigh, mtimeLow, mtimeHigh) {
+    const atime = getDoubleInt(atimeLow, atimeHigh)
+    const mtime = getDoubleInt(mtimeLow, mtimeHigh)
+    this.ops.utimens(path, atime, mtime, err => {
       return signal(err)
     })
   }
@@ -376,14 +376,14 @@ class Fuse extends Nanoresource {
     })
   }
 
-  _op_read (signal, path, fd, buf, len, offset) {
-    this.ops.read(path, fd, buf, len, offset, (err, bytesRead) => {
+  _op_read (signal, path, fd, buf, len, offsetLow, offsetHigh) {
+    this.ops.read(path, fd, buf, len, getDoubleArg(offsetLow, offsetHigh), (err, bytesRead) => {
       return signal(err, bytesRead)
     })
   }
 
-  _op_write (signal, path, fd, buf, len, offset) {
-    this.ops.write(path, fd, buf, len, offset, (err, bytesWritten) => {
+  _op_write (signal, path, fd, buf, len, offsetLow, offsetHigh) {
+    this.ops.write(path, fd, buf, len, getDoubleArg(offsetLow, offsetHigh), (err, bytesWritten) => {
       return signal(err, bytesWritten)
     })
   }
@@ -460,14 +460,16 @@ class Fuse extends Nanoresource {
     })
   }
 
-  _op_truncate (signal, path, size) {
+  _op_truncate (signal, path, sizeLow, sizeHigh) {
+    const size = getDoubleArg(sizeLow, sizeHigh)
     this.ops.truncate(path, size, err => {
       return signal(err)
     })
   }
 
-  _op_ftruncate (signal, path, size, fd) {
-    this.ops.ftruncate(path, size, fd, err => {
+  _op_ftruncate (signal, path, fd, sizeLow, sizeHigh) {
+    const size = getDoubleArg(sizeLow, sizeHigh)
+    this.ops.ftruncate(path, fd, size, err => {
       return signal(err)
     })
   }
@@ -706,9 +708,11 @@ function setDoubleInt (arr, idx, num) {
 
 function getDoubleInt (arr, idx) {
   arr = new Uint32Array(arr)
-  var num = arr[idx + 1] * 4294967296
-  num += arr[idx]
-  return num
+  return arr[idx] + arr[idx + 1] * 4294967296
+}
+
+function getDoubleArg (a, b) {
+  return a + b * 4294967296
 }
 
 function toDateMS (st) {
@@ -718,21 +722,21 @@ function toDateMS (st) {
 }
 
 function getStatArray (stat) {
-  const ints = new Uint32Array(16)
+  const ints = new Uint32Array(18)
 
   ints[0] = (stat && stat.mode) || 0
   ints[1] = (stat && stat.uid) || 0
   ints[2] = (stat && stat.gid) || 0
-  ints[3] = (stat && stat.size) || 0
-  ints[4] = (stat && stat.dev) || 0
-  ints[5] = (stat && stat.nlink) || 1
-  ints[6] = (stat && stat.ino) || 0
-  ints[7] = (stat && stat.rdev) || 0
-  ints[8] = (stat && stat.blksize) || 0
-  ints[9] = (stat && stat.blocks) || 0
-  setDoubleInt(ints, 10, toDateMS(stat && stat.atime))
-  setDoubleInt(ints, 12, toDateMS(stat && stat.mtime))
-  setDoubleInt(ints, 14, toDateMS(stat && stat.ctime))
+  setDoubleInt(ints, 3, (stat && stat.size) || 0)
+  ints[5] = (stat && stat.dev) || 0
+  ints[6] = (stat && stat.nlink) || 1
+  ints[7] = (stat && stat.ino) || 0
+  ints[8] = (stat && stat.rdev) || 0
+  ints[9] = (stat && stat.blksize) || 0
+  setDoubleInt(ints, 10, (stat && stat.blocks) || 0)
+  setDoubleInt(ints, 12, toDateMS(stat && stat.atime))
+  setDoubleInt(ints, 14, toDateMS(stat && stat.mtime))
+  setDoubleInt(ints, 16, toDateMS(stat && stat.ctime))
 
   return ints
 }
