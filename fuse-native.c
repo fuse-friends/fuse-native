@@ -65,7 +65,7 @@
 #define FUSE_METHOD_VOID(name, callbackArgs, signalArgs, signature, callBlk, callbackBlk)\
   FUSE_METHOD(name, callbackArgs, signalArgs, signature, callBlk, callbackBlk, {})
 
-#define FUSE_SIZE_T_INTS_ARGV(n, pos)\
+#define FUSE_UINT64_TO_INTS_ARGV(n, pos)\
   uint32_t low##pos = n % 4294967296;\
   uint32_t high##pos = (n - low##pos) / 4294967296;\
   napi_create_uint32(env, low##pos, &(argv[pos]));\
@@ -184,20 +184,20 @@ static void fin (napi_env env, void *fin_data, void* fin_hint) {
   // noop
 }
 
-static size_t ints_to_size_t (uint32_t **ints) {
-  size_t low = *((*ints)++);
-  size_t high = *((*ints)++);
+static uint64_t uint32s_to_uint64 (uint32_t **ints) {
+  uint64_t low = *((*ints)++);
+  uint64_t high = *((*ints)++);
   return high * 4294967296 + low;
 }
 
-static void ints_to_timespec (struct timespec* ts, uint32_t** ints) {
-  size_t ms = ints_to_size_t(ints);
+static void uint32s_to_timespec (struct timespec* ts, uint32_t** ints) {
+  uint64_t ms = uint32s_to_uint64(ints);
   ts->tv_sec = ms / 1000;
   ts->tv_nsec = (ms % 1000) * 1000000;
 }
 
-static size_t timespec_to_size_t (const struct timespec* ts) {
-  size_t ms = (ts->tv_sec * 1000) + (ts->tv_nsec / 1000000);
+static uint64_t timespec_to_uint64 (const struct timespec* ts) {
+  uint64_t ms = (ts->tv_sec * 1000) + (ts->tv_nsec / 1000000);
   return ms;
 }
 
@@ -205,21 +205,21 @@ static void populate_stat (uint32_t *ints, struct stat* stat) {
   stat->st_mode = *ints++;
   stat->st_uid = *ints++;
   stat->st_gid = *ints++;
-  stat->st_size = ints_to_size_t(&ints);
+  stat->st_size = uint32s_to_uint64(&ints);
   stat->st_dev = *ints++;
   stat->st_nlink = *ints++;
   stat->st_ino = *ints++;
   stat->st_rdev = *ints++;
   stat->st_blksize = *ints++;
-  stat->st_blocks = ints_to_size_t(&ints);
+  stat->st_blocks = uint32s_to_uint64(&ints);
 #ifdef __APPLE__
-  ints_to_timespec(&stat->st_atimespec, &ints);
-  ints_to_timespec(&stat->st_mtimespec, &ints);
-  ints_to_timespec(&stat->st_ctimespec, &ints);
+  uint32s_to_timespec(&stat->st_atimespec, &ints);
+  uint32s_to_timespec(&stat->st_mtimespec, &ints);
+  uint32s_to_timespec(&stat->st_ctimespec, &ints);
 #else
-  ints_to_timespec(&stat->st_atim, &ints);
-  ints_to_timespec(&stat->st_mtim, &ints);
-  ints_to_timespec(&stat->st_ctim, &ints);
+  uint32s_to_timespec(&stat->st_atim, &ints);
+  uint32s_to_timespec(&stat->st_mtim, &ints);
+  uint32s_to_timespec(&stat->st_ctim, &ints);
 #endif
 }
 
@@ -335,12 +335,12 @@ FUSE_METHOD(create, 2, 1, (const char *path, mode_t mode, struct fuse_file_info 
 
 FUSE_METHOD_VOID(utimens, 5, 0, (const char *path, const struct timespec tv[2]), {
   l->path = path;
-  l->atime = timespec_to_size_t(&tv[0]);
-  l->mtime = timespec_to_size_t(&tv[1]);
+  l->atime = timespec_to_uint64(&tv[0]);
+  l->mtime = timespec_to_uint64(&tv[1]);
 }, {
   napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
-  FUSE_SIZE_T_INTS_ARGV(l->atime, 3)
-  FUSE_SIZE_T_INTS_ARGV(l->atime, 5)
+  FUSE_UINT64_TO_INTS_ARGV(l->atime, 3)
+  FUSE_UINT64_TO_INTS_ARGV(l->atime, 5)
 })
 
 FUSE_METHOD_VOID(release, 2, 0, (const char *path, struct fuse_file_info *info), {
@@ -378,7 +378,7 @@ FUSE_METHOD(read, 6, 1, (const char *path, char *buf, size_t len, off_t offset, 
   napi_create_uint32(env, l->info->fh, &(argv[3]));
   napi_create_external_buffer(env, l->len, (char *) l->buf, &fin, NULL, &(argv[4]));
   napi_create_uint32(env, l->len, &(argv[5]));
-  FUSE_SIZE_T_INTS_ARGV(l->offset, 6)
+  FUSE_UINT64_TO_INTS_ARGV(l->offset, 6)
 }, {
   // TODO: handle bytes processed?
 })
@@ -394,7 +394,7 @@ FUSE_METHOD(write, 6, 1, (const char *path, const char *buf, size_t len, off_t o
   napi_create_uint32(env, l->info->fh, &(argv[3]));
   napi_create_external_buffer(env, l->len, (char *) l->buf, &fin, NULL, &(argv[4]));
   napi_create_uint32(env, l->len, &(argv[5]));
-  FUSE_SIZE_T_INTS_ARGV(l->offset, 6)
+  FUSE_UINT64_TO_INTS_ARGV(l->offset, 6)
 }, {
   // TODO: handle bytes processed?
 })
@@ -564,15 +564,15 @@ FUSE_METHOD_VOID(fsyncdir, 3, 0, (const char *path, int datasync, struct fuse_fi
 
 FUSE_METHOD_VOID(truncate, 3, 0, (const char *path, off_t size), {
   l->path = path;
-  l->len = size;
+  l->offset = size;
 }, {
   napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
-  FUSE_SIZE_T_INTS_ARGV(l->len, 3)
+  FUSE_UINT64_TO_INTS_ARGV(l->offset, 3)
 })
 
 FUSE_METHOD_VOID(ftruncate, 4, 0, (const char *path, off_t size, struct fuse_file_info *info), {
   l->path = path;
-  l->len = size;
+  l->offset = size;
   l->info = info;
 }, {
   napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
@@ -581,7 +581,7 @@ FUSE_METHOD_VOID(ftruncate, 4, 0, (const char *path, off_t size, struct fuse_fil
   } else {
     napi_create_uint32(env, 0, &(argv[3]));
   }
-  FUSE_SIZE_T_INTS_ARGV(l->len, 4)
+  FUSE_UINT64_TO_INTS_ARGV(l->offset, 4)
 })
 
 FUSE_METHOD(readlink, 1, 1, (const char *path, char *linkname, size_t len), {
