@@ -54,37 +54,44 @@ tape('read', function (t) {
   }
 
   const fuse = new Fuse(mnt, ops, { debug: !true, autoCache: true })
-  fuse.mount(function (err) {
-    t.error(err, 'no error')
+  let fd = 0
 
-    fs.open(path.join(mnt, 'test'), 'w+', function (_, fd) {
-      run(
-        (_, cb) => fs.fstat(fd, cb),
-        checkSize(0),
-        (_, cb) => fs.ftruncate(fd, 4 * 1024 * 1024 * 1024 + 1, cb),
-        (_, cb) => fs.fstat(fd, cb),
-        checkSize(4 * 1024 * 1024 * 1024 + 1),
-        (_, cb) => fs.truncate(path.join(mnt, 'test'), 6 * 1024 * 1024 * 1024 + 2, cb),
-        (_, cb) => fs.fstat(fd, cb),
-        checkSize(6 * 1024 * 1024 * 1024 + 2),
-        (_, cb) => fs.write(fd, Buffer.alloc(4096), 0, 4096, 0, cb),
-        (_, cb) => fs.write(fd, Buffer.alloc(4096), 0, 4096, 4 * 1024 * 1024 * 1024, cb),
-        (_, cb) => fs.write(fd, Buffer.alloc(4096), 0, 4096, 6 * 1024 * 1024 * 1024, cb),
-        (_, cb) => fs.fstat(fd, cb),
-        checkSize(6 * 1024 * 1024 * 1024 + 4096),
-        (_, cb) => fs.read(fd, Buffer.alloc(4096), 0, 4096, 0, cb),
-        (_, cb) => fs.read(fd, Buffer.alloc(4096), 0, 4096, 4 * 1024 * 1024 * 1024, cb),
-        (_, cb) => fs.read(fd, Buffer.alloc(4096), 0, 4096, 6 * 1024 * 1024 * 1024, cb),
-        (_, cb) => fs.close(fd, cb),
-        (_, cb) => unmount(fuse, cb),
-        () => {
-          t.same(writes.length, 0)
-          t.same(reads.length, 0)
-          t.end()
-        }
-      )
+  run(
+    (_, cb) => fuse.mount(cb),
+    open,
+    (_, cb) => fs.fstat(fd, cb),
+    checkSize(0),
+    (_, cb) => fs.ftruncate(fd, 4 * 1024 * 1024 * 1024 + 1, cb),
+    (_, cb) => fs.fstat(fd, cb),
+    checkSize(4 * 1024 * 1024 * 1024 + 1),
+    (_, cb) => fs.truncate(path.join(mnt, 'test'), 6 * 1024 * 1024 * 1024 + 2, cb),
+    (_, cb) => fs.fstat(fd, cb),
+    checkSize(6 * 1024 * 1024 * 1024 + 2),
+    (_, cb) => fs.write(fd, Buffer.alloc(4096), 0, 4096, 0, cb),
+    (_, cb) => fs.write(fd, Buffer.alloc(4096), 0, 4096, 4 * 1024 * 1024 * 1024, cb),
+    (_, cb) => fs.write(fd, Buffer.alloc(4096), 0, 4096, 6 * 1024 * 1024 * 1024, cb),
+    (_, cb) => fs.fstat(fd, cb),
+    checkSize(6 * 1024 * 1024 * 1024 + 4096),
+    (_, cb) => fs.close(fd, cb),
+    open,
+    (_, cb) => fs.read(fd, Buffer.alloc(4096), 0, 4096, 0, cb),
+    (_, cb) => fs.read(fd, Buffer.alloc(4096), 0, 4096, 4 * 1024 * 1024 * 1024, cb),
+    (_, cb) => fs.read(fd, Buffer.alloc(4096), 0, 4096, 6 * 1024 * 1024 * 1024, cb),
+    (_, cb) => fs.close(fd, cb),
+    (_, cb) => unmount(fuse, cb),
+    () => {
+      t.same(writes.length, 0)
+      t.same(reads.length, 0)
+      t.end()
+    }
+  )
+
+  function open (_, cb) {
+    fs.open(path.join(mnt, 'test'), 'a+', function (_, res) {
+      fd = res
+      cb()
     })
-  })
+  }
 
   function checkSize (n) {
     return ({ size}, cb) => {
@@ -92,13 +99,14 @@ tape('read', function (t) {
       cb()
     }
   }
-})
 
-function run (...fns) {
-  const all = [...fns]
-  tick()
-  function tick (_, val) {
-    const next = all.shift()
-    if (next) next(val, tick)
+  function run (...fns) {
+    const all = [...fns]
+    tick()
+    function tick (err, val) {
+      t.error(err, 'no error')
+      const next = all.shift()
+      if (next) next(val, tick)
+    }
   }
-}
+})
