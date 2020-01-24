@@ -135,6 +135,7 @@ class Fuse extends Nanoresource {
     this.mnt = path.resolve(mnt)
 
     this.ops = ops
+    this._force = !!opts.force
     this._thread = null
     this._handlers = this._makeHandlerArray()
 
@@ -225,28 +226,46 @@ class Fuse extends Nanoresource {
     }
   }
 
+  // Static methods
+  static unmount (mnt, cb) {
+    const mnt = JSON.stringify(mnt)
+    const cmd = IS_OSX ? `diskutil umount ${mnt}` : `fusermount -uz ${mnt}`
+    exec(cmd, err => {
+      if (err) return cb(err)
+      return cb(null)
+    })
+  }
+
   // Lifecycle methods
 
   _open (cb) {
-    this._thread = Buffer.alloc(binding.sizeof_fuse_thread_t)
-    this._openCallback = cb
+    const self = this
 
-    const opts = this._fuseOptions()
-    const implemented = this._getImplementedArray()
+    if (this._force) return Fuse.unmount(this.mnt, open)
+    return open()
 
-    return fs.stat(this.mnt, (err, stat) => {
-      if (err) return cb(new Error('Mountpoint does not exist'))
-      if (!stat.isDirectory()) return cb(new Error('Mountpoint is not a directory'))
-      return fs.stat(path.join(this.mnt, '..'), (_, parent) => {
-        if (parent && parent.dev !== stat.dev) return cb(new Error('Mountpoint in use'))
-        try {
-          // TODO: asyncify
-          binding.fuse_native_mount(this.mnt, opts, this._thread, this, this._handlers, implemented)
-        } catch (err) {
-          return cb(err)
-        }
+    function open (err) {
+      if (err) return cb(err)
+      this._thread = Buffer.alloc(binding.sizeof_fuse_thread_t)
+      this._openCallback = cb
+
+      const opts = this._fuseOptions()
+      const implemented = this._getImplementedArray()
+
+      return fs.stat(this.mnt, (err, stat) => {
+        if (err) return cb(new Error('Mountpoint does not exist'))
+        if (!stat.isDirectory()) return cb(new Error('Mountpoint is not a directory'))
+        return fs.stat(path.join(this.mnt, '..'), (_, parent) => {
+          if (parent && parent.dev !== stat.dev) return cb(new Error('Mountpoint in use'))
+          try {
+            // TODO: asyncify
+            binding.fuse_native_mount(this.mnt, opts, this._thread, this, this._handlers, implemented)
+          } catch (err) {
+            return cb(err)
+          }
+        })
       })
-    })
+    }
   }
 
   _close (cb) {
@@ -255,7 +274,7 @@ class Fuse extends Nanoresource {
     const mnt = JSON.stringify(this.mnt)
     const cmd = IS_OSX ? `diskutil umount ${mnt}` : `fusermount -uz ${mnt}`
 
-    exec(cmd, (err, stdout, stderr) => {
+    Fuse.unmount(mnt, err => {
       if (err) return cb(err)
       nativeUnmount()
     })
