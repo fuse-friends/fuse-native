@@ -9,9 +9,10 @@ const { beforeMount, beforeUnmount, configure, unconfigure, isConfigured } = req
 const binding = require('node-gyp-build')(__dirname)
 
 const IS_OSX = os.platform() === 'darwin'
-const ENOTCONN = IS_OSX ? -57 : -107
 const OSX_FOLDER_ICON = '/System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/GenericFolderIcon.icns'
 const HAS_FOLDER_ICON = IS_OSX && fs.existsSync(OSX_FOLDER_ICON)
+
+const ENOTCONN = IS_OSX ? -57 : -107
 
 const OpcodesAndDefaults = new Map([
   ['init', {
@@ -246,8 +247,8 @@ class Fuse extends Nanoresource {
     const self = this
 
     if (this._force) {
-      return fs.stat(path.join(this.mnt), (err, st) => {
-        if (err && err.errno === ENOTCONN) return Fuse.unmount(this.mnt, open)
+      return fs.stat(path.join(this.mnt, 'test'), (err, st) => {
+        if (err && (err.errno === ENOTCONN || err.errno === Fuse.ENXIO)) return Fuse.unmount(this.mnt, open)
         return open()
       })
     }
