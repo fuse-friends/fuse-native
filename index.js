@@ -9,6 +9,7 @@ const { beforeMount, beforeUnmount, configure, unconfigure, isConfigured } = req
 const binding = require('node-gyp-build')(__dirname)
 
 const IS_OSX = os.platform() === 'darwin'
+const ENOTCONN = IS_OSX ? -57 : -107
 const OSX_FOLDER_ICON = '/System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/GenericFolderIcon.icns'
 const HAS_FOLDER_ICON = IS_OSX && fs.existsSync(OSX_FOLDER_ICON)
 
@@ -227,8 +228,9 @@ class Fuse extends Nanoresource {
   }
 
   // Static methods
+
   static unmount (mnt, cb) {
-    const mnt = JSON.stringify(mnt)
+    mnt = JSON.stringify(mnt)
     const cmd = IS_OSX ? `diskutil umount ${mnt}` : `fusermount -uz ${mnt}`
     exec(cmd, err => {
       if (err) return cb(err)
@@ -236,30 +238,37 @@ class Fuse extends Nanoresource {
     })
   }
 
+  // Debugging methods
+
   // Lifecycle methods
 
   _open (cb) {
     const self = this
 
-    if (this._force) return Fuse.unmount(this.mnt, open)
+    if (this._force) {
+      return fs.stat(path.join(this.mnt), (err, st) => {
+        if (err && err.errno === ENOTCONN) return Fuse.unmount(this.mnt, open)
+        return open()
+      })
+    }
     return open()
 
-    function open (err) {
-      if (err) return cb(err)
-      this._thread = Buffer.alloc(binding.sizeof_fuse_thread_t)
-      this._openCallback = cb
+    function open () {
+      // If there was an unmount error, continue attempting to mount (this is the best we can do)
+      self._thread = Buffer.alloc(binding.sizeof_fuse_thread_t)
+      self._openCallback = cb
 
-      const opts = this._fuseOptions()
-      const implemented = this._getImplementedArray()
+      const opts = self._fuseOptions()
+      const implemented = self._getImplementedArray()
 
-      return fs.stat(this.mnt, (err, stat) => {
+      return fs.stat(self.mnt, (err, stat) => {
         if (err) return cb(new Error('Mountpoint does not exist'))
         if (!stat.isDirectory()) return cb(new Error('Mountpoint is not a directory'))
-        return fs.stat(path.join(this.mnt, '..'), (_, parent) => {
+        return fs.stat(path.join(self.mnt, '..'), (_, parent) => {
           if (parent && parent.dev !== stat.dev) return cb(new Error('Mountpoint in use'))
           try {
             // TODO: asyncify
-            binding.fuse_native_mount(this.mnt, opts, this._thread, this, this._handlers, implemented)
+            binding.fuse_native_mount(self.mnt, opts, self._thread, self, self._handlers, implemented)
           } catch (err) {
             return cb(err)
           }
@@ -269,13 +278,10 @@ class Fuse extends Nanoresource {
   }
 
   _close (cb) {
-    if (this._closed) return process.nextTick(cb, null)
     const self = this
-    const mnt = JSON.stringify(this.mnt)
-    const cmd = IS_OSX ? `diskutil umount ${mnt}` : `fusermount -uz ${mnt}`
 
-    Fuse.unmount(mnt, err => {
-      if (err) return cb(err)
+    Fuse.unmount(this.mnt, () => {
+      // Even if the unmount command fails, do the native unmount.
       nativeUnmount()
     })
 
@@ -285,7 +291,6 @@ class Fuse extends Nanoresource {
       } catch (err) {
         return cb(err)
       }
-      self._closed = true
       return cb(null)
     }
   }
