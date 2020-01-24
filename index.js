@@ -11,6 +11,8 @@ const binding = require('node-gyp-build')(__dirname)
 const IS_OSX = os.platform() === 'darwin'
 const OSX_FOLDER_ICON = '/System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/GenericFolderIcon.icns'
 const HAS_FOLDER_ICON = IS_OSX && fs.existsSync(OSX_FOLDER_ICON)
+const DEFAULT_TIMEOUT = 15 * 1000
+const TIMEOUT_ERRNO = IS_OSX ? -110 : -60
 
 const ENOTCONN = IS_OSX ? -57 : -107
 
@@ -133,10 +135,12 @@ const OpcodesAndDefaults = new Map([
 class Fuse extends Nanoresource {
   constructor (mnt, ops, opts = {}) {
     super()
+
     this.opts = opts
     this.mnt = path.resolve(mnt)
-
     this.ops = ops
+    this.timeout = opts.timeout || DEFAULT_TIMEOUT
+
     this._force = !!opts.force
     this._thread = null
     this._handlers = this._makeHandlerArray()
@@ -199,6 +203,7 @@ class Fuse extends Nanoresource {
   _makeHandlerArray () {
     const self = this
     const handlers = new Array(OpcodesAndDefaults.size)
+    const to = this.timeout || DEFAULT_TIMEOUT
 
     for (const [name, { op, defaults }] of OpcodesAndDefaults) {
       const nativeSignal = binding[`fuse_native_signal_${name}`]
@@ -211,7 +216,7 @@ class Fuse extends Nanoresource {
 
     function makeHandler (name, op, defaults, nativeSignal) {
       return function (nativeHandler, opCode, ...args) {
-        const boundSignal = signal.bind(null, nativeHandler)
+        const boundSignal = autoTimeout(signal.bind(null, nativeHandler))
         const funcName = `_op_${name}`
         if (!self[funcName] || !self._implemented.has(op)) return boundSignal(-1, ...defaults)
         return self[funcName].apply(self, [boundSignal, ...args])
@@ -224,6 +229,19 @@ class Fuse extends Nanoresource {
           if (arr.length === 2) arr = arr.concat(defaults)
         }
         return process.nextTick(nativeSignal, ...arr)
+      }
+    }
+
+    function autoTimeout (cb) {
+      let called = false
+      const timeout = setTimeout(timeoutWrap, to, TIMEOUT_ERRNO)
+      return timeoutWrap
+
+      function timeoutWrap (...args) {
+        if (called) return
+        called = true
+        clearTimeout(timeout)
+        cb(...args)
       }
     }
   }
