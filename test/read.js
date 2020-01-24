@@ -93,6 +93,7 @@ tape.skip('read timeout does not force unmount', function (t) {
       } else if (path === '/timeout') {
         console.log('read is gonna time out')
         // Just let this one timeout
+        setTimeout(cb, 20 * 1000, -2)
         return
       }
       return cb(-2)
