@@ -171,6 +171,7 @@ class Fuse extends Nanoresource {
     if ((/\*|(^,)fuse-bindings(,$)/.test(process.env.DEBUG)) || this.opts.debug) options.push('debug')
     if (this.opts.allowOther) options.push('allow_other')
     if (this.opts.allowRoot) options.push('allow_root')
+    if (this.opts.ro) options.push('ro')
     if (this.opts.autoUnmount) options.push('auto_unmount')
     if (this.opts.defaultPermissions) options.push('default_permissions')
     if (this.opts.blkdev) options.push('blkdev')
