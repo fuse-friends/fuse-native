@@ -138,6 +138,7 @@ class Fuse extends Nanoresource {
 
     this.ops = ops
     this._force = !!opts.force
+    this._mkdir = !!opts.mkdir
     this._thread = null
     this._handlers = this._makeHandlerArray()
 
@@ -263,9 +264,23 @@ class Fuse extends Nanoresource {
       const implemented = self._getImplementedArray()
 
       return fs.stat(self.mnt, (err, stat) => {
-        if (err) return cb(new Error('Mountpoint does not exist'))
+        if (err && err.errno !== -2) return cb(err)
+        if (err) {
+          if (!self._mkdir) return cb(new Error('Mountpoint does not exist'))
+          return fs.mkdir(self.mnt, { recursive: true }, err => {
+            if (err) return cb(err)
+            fs.stat(self.mnt, (err, stat) => {
+              if (err) return cb(err)
+              return onexists(stat)
+            })
+          })
+        }
         if (!stat.isDirectory()) return cb(new Error('Mountpoint is not a directory'))
-        return fs.stat(path.join(self.mnt, '..'), (_, parent) => {
+        return onexists(stat)
+      })
+
+      function onexists (stat) {
+        fs.stat(path.join(self.mnt, '..'), (_, parent) => {
           if (parent && parent.dev !== stat.dev) return cb(new Error('Mountpoint in use'))
           try {
             // TODO: asyncify
@@ -274,7 +289,7 @@ class Fuse extends Nanoresource {
             return cb(err)
           }
         })
-      })
+      }
     }
   }
 

@@ -1,9 +1,11 @@
-const mnt = require('./fixtures/mnt')
+const createMountpoint = require('./fixtures/mnt')
 const tape = require('tape')
 const { spawnSync } = require('child_process')
 
 const Fuse = require('../')
 const { unmount } = require('./helpers')
+
+const mnt = createMountpoint()
 
 tape('mount', function (t) {
   const fuse = new Fuse(mnt, {}, { force: true })
@@ -105,6 +107,28 @@ tape('mounting over a broken mountpoint with force succeeds', function (t) {
   fuse.mount(function (err) {
     t.error(err, 'no error')
     t.pass('works')
+    unmount(fuse, function (err) {
+      t.end()
+    })
+  })
+})
+
+tape('mounting without mkdir option and a nonexistent mountpoint fails', function (t) {
+  const nonexistentMnt = createMountpoint({ doNotCreate: true })
+
+  const fuse = new Fuse(nonexistentMnt, {}, { debug: false })
+  fuse.mount(function (err) {
+    t.true(err, 'could not mount')
+    t.end()
+  })
+})
+
+tape('mounting with mkdir option and a nonexistent mountpoint succeeds', function (t) {
+  const nonexistentMnt = createMountpoint({ doNotCreate: true })
+
+  const fuse = new Fuse(nonexistentMnt, {}, { debug: false, mkdir: true })
+  fuse.mount(function (err) {
+    t.error(err, 'no error')
     unmount(fuse, function (err) {
       t.end()
     })

@@ -4,9 +4,11 @@ const path = require('path')
 const concat = require('concat-stream')
 
 const Fuse = require('../')
-const mnt = require('./fixtures/mnt')
+const createMountpoint = require('./fixtures/mnt')
 const stat = require('./fixtures/stat')
 const { unmount } = require('./helpers')
+
+const mnt = createMountpoint()
 
 tape('read', function (t) {
   var ops = {
