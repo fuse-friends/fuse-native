@@ -3,9 +3,11 @@ const fs = require('fs')
 const path = require('path')
 
 const Fuse = require('../')
-const mnt = require('./fixtures/mnt')
+const createMountpoint = require('./fixtures/mnt')
 const stat = require('./fixtures/stat')
 const { unmount } = require('./helpers')
+
+const mnt = createMountpoint()
 
 tape('write', function (t) {
   var created = false

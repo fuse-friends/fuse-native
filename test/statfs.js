@@ -3,8 +3,10 @@ const { unmount } = require('./helpers')
 const tape = require('tape')
 
 const Fuse = require('../')
-const mnt = require('./fixtures/mnt')
+const createMountpoint = require('./fixtures/mnt')
 const stat = require('./fixtures/stat')
+
+const mnt = createMountpoint()
 
 tape('statfs', function (t) {
   const ops = {

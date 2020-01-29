@@ -4,8 +4,10 @@ const path = require('path')
 const { unmount } = require('./helpers')
 
 const Fuse = require('../')
-const mnt = require('./fixtures/mnt')
+const createMountpoint = require('./fixtures/mnt')
 const stat = require('./fixtures/stat')
+
+const mnt = createMountpoint()
 
 tape('readlink', function (t) {
   var ops = {

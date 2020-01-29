@@ -73,6 +73,8 @@ Create a new `Fuse` object.
 ```
   displayFolder: 'Folder Name', // Add a name/icon to the mount volume on OSX,
   debug: false,  // Enable detailed tracing of operations.
+  force: false,  // Attempt to unmount a the mountpoint before remounting.
+  mkdir: false   // Create the mountpoint before mounting.
 ```
 Additionally, all (FUSE-specific options)[http://man7.org/linux/man-pages/man8/mount.fuse.8.html] will be passed to the underlying FUSE module (though we use camel casing instead of snake casing).
 
