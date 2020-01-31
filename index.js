@@ -203,7 +203,6 @@ class Fuse extends Nanoresource {
   _makeHandlerArray () {
     const self = this
     const handlers = new Array(OpcodesAndDefaults.size)
-    const to = this.timeout
 
     for (const [name, { op, defaults }] of OpcodesAndDefaults) {
       const nativeSignal = binding[`fuse_native_signal_${name}`]
@@ -215,6 +214,13 @@ class Fuse extends Nanoresource {
     return handlers
 
     function makeHandler (name, op, defaults, nativeSignal) {
+      let to = self.timeout
+      if (typeof to === 'object' && to) {
+        const defaultTimeout = to.default || DEFAULT_TIMEOUT
+        to = to[name]
+        if (!to && to !== false) to = defaultTimeout
+      }
+
       return function (nativeHandler, opCode, ...args) {
         const sig = signal.bind(null, nativeHandler)
         const boundSignal = to ? autoTimeout(sig) : sig
@@ -231,18 +237,18 @@ class Fuse extends Nanoresource {
         }
         return process.nextTick(nativeSignal, ...arr)
       }
-    }
 
-    function autoTimeout (cb) {
-      let called = false
-      const timeout = setTimeout(timeoutWrap, to, TIMEOUT_ERRNO)
-      return timeoutWrap
+      function autoTimeout (cb) {
+        let called = false
+        const timeout = setTimeout(timeoutWrap, to, TIMEOUT_ERRNO)
+        return timeoutWrap
 
-      function timeoutWrap (...args) {
-        if (called) return
-        called = true
-        clearTimeout(timeout)
-        cb(...args)
+        function timeoutWrap (...args) {
+          if (called) return
+          called = true
+          clearTimeout(timeout)
+          cb(...args)
+        }
       }
     }
   }
