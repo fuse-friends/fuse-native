@@ -6,38 +6,18 @@ const concat = require('concat-stream')
 const Fuse = require('../')
 const createMountpoint = require('./fixtures/mnt')
 const stat = require('./fixtures/stat')
-const { unmount } = require('./helpers')
+const simpleFS = require('./fixtures/simple-fs')
 
+const { unmount } = require('./helpers')
 const mnt = createMountpoint()
 
 tape('read', function (t) {
-  var ops = {
-    force: true,
-    readdir: function (path, cb) {
-      if (path === '/') return process.nextTick(cb, null, ['test'])
-      return process.nextTick(cb, Fuse.ENOENT)
-    },
-    getattr: function (path, cb) {
-      if (path === '/') return process.nextTick(cb, null, stat({ mode: 'dir', size: 4096 }))
-      if (path === '/test') return process.nextTick(cb, null, stat({ mode: 'file', size: 11 }))
-      return process.nextTick(cb, Fuse.ENOENT)
-    },
-    open: function (path, flags, cb) {
-      return process.nextTick(cb, 0, 42)
-    },
-    release: function (path, fd, cb) {
+  const testFS = simpleFS({
+    release: function (path, fd) {
       t.same(fd, 42, 'fd was passed to release')
-      return process.nextTick(cb, 0)
-    },
-    read: function (path, fd, buf, len, pos, cb) {
-      var str = 'hello world'.slice(pos, pos + len)
-      if (!str) return process.nextTick(cb, 0)
-      buf.write(str)
-      return process.nextTick(cb, str.length)
     }
-  }
-
-  const fuse = new Fuse(mnt, ops, { debug: true })
+  })
+  const fuse = new Fuse(mnt, testFS, { debug: true })
   fuse.mount(function (err) {
     t.error(err, 'no error')
 

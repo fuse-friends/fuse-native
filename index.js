@@ -257,7 +257,7 @@ class Fuse extends Nanoresource {
 
   static unmount (mnt, cb) {
     mnt = JSON.stringify(mnt)
-    const cmd = IS_OSX ? `diskutil umount ${mnt}` : `fusermount -uz ${mnt}`
+    const cmd = IS_OSX ? `diskutil unmount force ${mnt}` : `fusermount -uz ${mnt}`
     exec(cmd, err => {
       if (err) return cb(err)
       return cb(null)
@@ -320,8 +320,11 @@ class Fuse extends Nanoresource {
   _close (cb) {
     const self = this
 
-    Fuse.unmount(this.mnt, () => {
-      // Even if the unmount command fails, do the native unmount.
+    Fuse.unmount(this.mnt, err => {
+      if (err) {
+        err.unmountFailure = true
+        return cb(err)
+      }
       nativeUnmount()
     })
 

@@ -1,9 +1,13 @@
-const createMountpoint = require('./fixtures/mnt')
+const os = require('os')
+const fs = require('fs')
 const tape = require('tape')
-const { spawnSync } = require('child_process')
+const { spawnSync, exec } = require('child_process')
+
+const createMountpoint = require('./fixtures/mnt')
 
 const Fuse = require('../')
 const { unmount } = require('./helpers')
+const simpleFS = require('./fixtures/simple-fs')
 
 const mnt = createMountpoint()
 
@@ -131,6 +135,56 @@ tape('mounting with mkdir option and a nonexistent mountpoint succeeds', functio
     t.error(err, 'no error')
     unmount(fuse, function (err) {
       t.end()
+    })
+  })
+})
+
+tape('(osx only) unmount with Finder open succeeds', function (t) {
+  if (os.platform() !== 'darwin') return t.end()
+  const fuse = new Fuse(mnt, simpleFS(), { force: true, debug: false })
+  fuse.mount(function (err) {
+    t.error(err, 'no error')
+    exec(`open ${mnt}`, err => {
+      t.error(err, 'no error')
+      setTimeout(() => {
+        fs.readdir(mnt, (err, list) => {
+          t.error(err, 'no error')
+          t.same(list, ['test'])
+          unmount(fuse, err => {
+            t.error(err, 'no error')
+            fs.readdir(mnt, (err, list) => {
+              t.error(err, 'no error')
+              t.same(list, [])
+              t.end()
+            })
+          })
+        })
+      }, 1000)
+    })
+  })
+})
+
+tape('(osx only) unmount with Terminal open succeeds', function (t) {
+  if (os.platform() !== 'darwin') return t.end()
+  const fuse = new Fuse(mnt, simpleFS(), { force: true, debug: false })
+  fuse.mount(function (err) {
+    t.error(err, 'no error')
+    exec(`open -a Terminal ${mnt}`, err => {
+      t.error(err, 'no error')
+      setTimeout(() => {
+        fs.readdir(mnt, (err, list) => {
+          t.error(err, 'no error')
+          t.same(list, ['test'])
+          unmount(fuse, err => {
+            t.error(err, 'no error')
+            fs.readdir(mnt, (err, list) => {
+              t.error(err, 'no error')
+              t.same(list, [])
+              t.end()
+            })
+          })
+        })
+      }, 1000)
     })
   })
 })
