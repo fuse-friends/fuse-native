@@ -512,8 +512,8 @@ class Fuse extends Nanoresource {
     })
   }
 
-  _op_flush (signal, path, datasync, fd) {
-    this.ops.flush(path, datasync, fd, err => {
+  _op_flush (signal, path, fd) {
+    this.ops.flush(path, fd, err => {
       return signal(err)
     })
   }
