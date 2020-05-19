@@ -43,7 +43,7 @@
     uint32_t op = op_##name;\
     FUSE_NATIVE_CALLBACK(ft->handlers[op], {\
       napi_value argv[callbackArgs + 2];\
-      napi_create_external_buffer(env, sizeof(fuse_thread_locals_t), l, &fin, NULL, &(argv[0]));\
+      napi_get_reference_value(env, l->self, &(argv[0]));\
       napi_create_uint32(env, l->op, &(argv[1]));\
       callbackBlk\
       NAPI_MAKE_CALLBACK(env, NULL, ctx, callback, callbackArgs + 2, argv, NULL)\
@@ -116,6 +116,7 @@ typedef struct {
   pthread_t thread;
   pthread_attr_t attr;
   napi_ref ctx;
+  napi_ref malloc;
 
   // Operation handlers
   napi_ref handlers[35];
@@ -132,6 +133,8 @@ typedef struct {
 } fuse_thread_t;
 
 typedef struct {
+  napi_ref self;
+
   // Opcode
   uint32_t op;
   void *op_fn;
@@ -175,7 +178,7 @@ typedef struct {
 } fuse_thread_locals_t;
 
 static pthread_key_t thread_locals_key;
-static fuse_thread_locals_t* get_thread_locals ();
+static fuse_thread_locals_t* get_thread_locals();
 
 // Helpers
 // TODO: Extract into a separate file.
@@ -670,8 +673,10 @@ FUSE_METHOD_VOID(rmdir, 1, 0, (const char *path), {
 static void fuse_native_dispatch_init (uv_async_t* handle, fuse_thread_locals_t* l, fuse_thread_t* ft) {\
   FUSE_NATIVE_CALLBACK(ft->handlers[op_init], {
     napi_value argv[2];
-    napi_create_external_buffer(env, sizeof(fuse_thread_locals_t), l, &fin, NULL, &(argv[0]));
+
+    napi_get_reference_value(env, l->self, &(argv[0]));
     napi_create_uint32(env, l->op, &(argv[1]));
+
     NAPI_MAKE_CALLBACK(env, NULL, ctx, callback, 2, argv, NULL);
   })
 }
@@ -687,10 +692,13 @@ NAPI_METHOD(fuse_native_signal_init) {
 
 static void * fuse_native_init (struct fuse_conn_info *conn) {
   fuse_thread_locals_t *l = get_thread_locals();
+
   l->op = op_init;
   l->op_fn = fuse_native_dispatch_init;
+
   uv_async_send(&(l->async));
   uv_sem_wait(&(l->sem));
+
   return l->fuse;
 }
 
@@ -700,12 +708,27 @@ static void fuse_native_dispatch (uv_async_t* handle) {
   fuse_thread_locals_t *l = (fuse_thread_locals_t *) handle->data;
   fuse_thread_t *ft = l->fuse;
   void (*fn)(uv_async_t *, fuse_thread_locals_t *, fuse_thread_t *) = l->op_fn;
+
   fn(handle, l, ft);
 }
 
 static void fuse_native_async_init (uv_async_t* handle) {
-  fuse_thread_locals_t *l = (fuse_thread_locals_t *) handle->data;
-  fuse_thread_t *ft = l->fuse;
+  fuse_thread_t *ft = (fuse_thread_t *) handle->data;
+  fuse_thread_locals_t *l;
+
+  FUSE_NATIVE_CALLBACK(ft->malloc, {
+    napi_value argv[1];
+    napi_create_uint32(ft->env, (uint32_t) sizeof(fuse_thread_locals_t), &(argv[0]));
+
+    napi_value buf;
+    NAPI_MAKE_CALLBACK(ft->env, NULL, ctx, callback, 1, argv, &buf);
+
+    size_t l_len;
+
+    napi_get_buffer_info(env, buf, (void **) &l, &l_len);
+    napi_create_reference(env, buf, 1, &(l->self));
+  })
+
 
   int err = uv_async_init(uv_default_loop(), &(l->async), (uv_async_cb) fuse_native_dispatch);
   assert(err >= 0);
@@ -714,6 +737,8 @@ static void fuse_native_async_init (uv_async_t* handle) {
 
   uv_sem_init(&(l->sem), 0);
   l->async.data = l;
+  ft->async.data = l;
+  l->fuse = ft;
 
   uv_sem_post(&(ft->sem));
 }
@@ -725,21 +750,18 @@ static fuse_thread_locals_t* get_thread_locals () {
   void *data = pthread_getspecific(thread_locals_key);
 
   if (data != NULL) {
-    return (fuse_thread_locals_t *)data;
+    return (fuse_thread_locals_t *) data;
   }
-
-  fuse_thread_locals_t* l = (fuse_thread_locals_t *) malloc(sizeof(fuse_thread_locals_t));
-  l->fuse = ft;
 
   // Need to lock the mutation of l->async.
   uv_mutex_lock(&(ft->mut));
-  ft->async.data = l;
+  ft->async.data = ft;
 
   // Notify the main thread to uv_async_init l->async.
   uv_async_send(&(ft->async));
   uv_sem_wait(&(ft->sem));
 
-  l->async.data = l;
+  fuse_thread_locals_t *l = (fuse_thread_locals_t*) ft->async.data;
 
   pthread_setspecific(thread_locals_key, (void *) l);
   uv_mutex_unlock(&(ft->mut));
@@ -759,14 +781,15 @@ static void* start_fuse_thread (void *data) {
 }
 
 NAPI_METHOD(fuse_native_mount) {
-  NAPI_ARGV(6)
+  NAPI_ARGV(7)
 
   NAPI_ARGV_UTF8(mnt, 1024, 0);
   NAPI_ARGV_UTF8(mntopts, 1024, 1);
   NAPI_ARGV_BUFFER_CAST(fuse_thread_t *, ft, 2);
   napi_create_reference(env, argv[3], 1, &(ft->ctx));
-  napi_value handlers = argv[4];
-  NAPI_ARGV_BUFFER_CAST(uint32_t *, implemented, 5)
+  napi_create_reference(env, argv[4], 1, &(ft->malloc));
+  napi_value handlers = argv[5];
+  NAPI_ARGV_BUFFER_CAST(uint32_t *, implemented, 6)
 
   for (int i = 0; i < 35; i++) {
     ft->handlers[i] = NULL;

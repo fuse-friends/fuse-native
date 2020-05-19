@@ -144,6 +144,7 @@ class Fuse extends Nanoresource {
     this._mkdir = !!opts.mkdir
     this._thread = null
     this._handlers = this._makeHandlerArray()
+    this._threads = new Set()
 
     const implemented = [binding.op_init, binding.op_error, binding.op_getattr]
     if (ops) {
@@ -200,6 +201,12 @@ class Fuse extends Nanoresource {
     return options.length ? '-o' + options.join(',') : ''
   }
 
+  _malloc (size) {
+    const buf = Buffer.alloc(size)
+    this._threads.add(buf)
+    return buf
+  }
+
   _makeHandlerArray () {
     const self = this
     const handlers = new Array(OpcodesAndDefaults.size)
@@ -231,10 +238,12 @@ class Fuse extends Nanoresource {
 
       function signal (nativeHandler, err, ...args) {
         var arr = [nativeHandler, err, ...args]
+
         if (defaults) {
           while (arr.length > 2 && arr[arr.length - 1] === undefined) arr.pop()
           if (arr.length === 2) arr = arr.concat(defaults)
         }
+
         return process.nextTick(nativeSignal, ...arr)
       }
 
@@ -308,7 +317,7 @@ class Fuse extends Nanoresource {
           if (parent && parent.dev !== stat.dev) return cb(new Error('Mountpoint in use'))
           try {
             // TODO: asyncify
-            binding.fuse_native_mount(self.mnt, opts, self._thread, self, self._handlers, implemented)
+            binding.fuse_native_mount(self.mnt, opts, self._thread, self, self._malloc, self._handlers, implemented)
           } catch (err) {
             return cb(err)
           }
@@ -381,6 +390,7 @@ class Fuse extends Nanoresource {
       }
       return
     }
+
     this.ops.getattr(path, (err, stat) => {
       if (err) return signal(err, getStatArray())
       return signal(0, getStatArray(stat))
