@@ -33,5 +33,18 @@ before_deploy:
 - ARCHIVE_NAME="${TRAVIS_TAG:-latest}-$TRAVIS_OS_NAME.tar"
 - npm run prebuild
 - if [[ "$TRAVIS_OS_NAME" == "windows" ]]; then PREBUILD_ARCH=ia32 npm run prebuild; fi
-- if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then PREBUILD_ARCH=ia32 npm run prebuild; fi
 - cd prebuilds && tar cvf "../$ARCHIVE_NAME" . && cd ..
+
+cache:
+  npm: false
+
+deploy:
+  provider: releases
+  draft: false
+  prerelease: true
+  api_key:
+    secure: "KPn3xR4LWcg/H259aSZh26XX0eapR88xSNUkBmEri/sCJSyZ0+asLZSv/HDD3KJP4HeuIKsQc0v8fcebD83fkvaSvlUzSppMQgniwuGC1cAefbrgZDwmJJ/n+lE8Wr9x4adOBTgICS5Uc8LlZ1PuJGm4mmequVs29BEw9738LzN4+3NpoCoWd0FAgGF0tDTsaYL1tJqERAyNIxHS+adUPe0F2r0d2UJ7mOrW7s8Ai6e6QryFsFvA2m0Xn/pQmNO/mcq+LPcw57pWuI3Hm3Cu3W8VPJXYp/yJaFqTAn3D9Fwz4tkmbfmca4ETwZYOS3lvL/rjLQ+69SJlRRu/QfPECkZven+wwsLX/DmyGHgEWqeGWjKj/NxYOIKUKEZZCVrF8cy4j9mac+LK6bAeDZERKSxUJ9GT5WsjvV3RNKgp3MZF7mtmj4IWXfgcuwFX49oIqhzSJsucBBXlB74J7Qua5VJPEAo/7X7Q+Y9IT9JHwxXsXVF5ZNj1PMlJicVD6oKi4XCFOVxSE9wdzlBwMOlUyBGhAIzS6lmxHOELYO9C7l8t/8Zvi4a+YGvOwn0dzLb9zuA1bzqJmEB1fkQMZXHvcEY1o5jSTQ0cNn1Wx4Ck9zyLyhnZ5KRXKzGQ1du55iVOThcbl/8j6zT218SiZMMtv8ZwPy4pJt4skMGsoOZtYlE="  file: "$ARCHIVE_NAME"
+  skip_cleanup: true
+  on:
+    tags: true
+    node: 'node'

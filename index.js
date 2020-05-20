@@ -144,6 +144,7 @@ class Fuse extends Nanoresource {
     this._mkdir = !!opts.mkdir
     this._thread = null
     this._handlers = this._makeHandlerArray()
+    this._threads = new Set()
 
     const implemented = [binding.op_init, binding.op_error, binding.op_getattr]
     if (ops) {
@@ -200,6 +201,12 @@ class Fuse extends Nanoresource {
     return options.length ? '-o' + options.join(',') : ''
   }
 
+  _malloc (size) {
+    const buf = Buffer.alloc(size)
+    this._threads.add(buf)
+    return buf
+  }
+
   _makeHandlerArray () {
     const self = this
     const handlers = new Array(OpcodesAndDefaults.size)
@@ -231,10 +238,12 @@ class Fuse extends Nanoresource {
 
       function signal (nativeHandler, err, ...args) {
         var arr = [nativeHandler, err, ...args]
+
         if (defaults) {
           while (arr.length > 2 && arr[arr.length - 1] === undefined) arr.pop()
           if (arr.length === 2) arr = arr.concat(defaults)
         }
+
         return process.nextTick(nativeSignal, ...arr)
       }
 
@@ -308,7 +317,7 @@ class Fuse extends Nanoresource {
           if (parent && parent.dev !== stat.dev) return cb(new Error('Mountpoint in use'))
           try {
             // TODO: asyncify
-            binding.fuse_native_mount(self.mnt, opts, self._thread, self, self._handlers, implemented)
+            binding.fuse_native_mount(self.mnt, opts, self._thread, self, self._malloc, self._handlers, implemented)
           } catch (err) {
             return cb(err)
           }
@@ -381,6 +390,7 @@ class Fuse extends Nanoresource {
       }
       return
     }
+
     this.ops.getattr(path, (err, stat) => {
       if (err) return signal(err, getStatArray())
       return signal(0, getStatArray(stat))
@@ -448,13 +458,13 @@ class Fuse extends Nanoresource {
 
   _op_read (signal, path, fd, buf, len, offsetLow, offsetHigh) {
     this.ops.read(path, fd, buf, len, getDoubleArg(offsetLow, offsetHigh), (err, bytesRead) => {
-      return signal(err, bytesRead)
+      return signal(err, bytesRead, buf.buffer)
     })
   }
 
   _op_write (signal, path, fd, buf, len, offsetLow, offsetHigh) {
     this.ops.write(path, fd, buf, len, getDoubleArg(offsetLow, offsetHigh), (err, bytesWritten) => {
-      return signal(err, bytesWritten)
+      return signal(err, bytesWritten, buf.buffer)
     })
   }
 
@@ -468,18 +478,18 @@ class Fuse extends Nanoresource {
 
   _op_setxattr (signal, path, name, value, position, flags) {
     this.ops.setxattr(path, name, value, position, flags, err => {
-      return signal(err)
+      return signal(err, value.buffer)
     })
   }
 
   _op_getxattr (signal, path, name, valueBuf, position) {
     this.ops.getxattr(path, name, position, (err, value) => {
       if (!err) {
-        if (!value) return signal(IS_OSX ? -93 : -61)
+        if (!value) return signal(IS_OSX ? -93 : -61, valueBuf.buffer)
         value.copy(valueBuf)
-        return signal(value.length)
+        return signal(value.length, valueBuf.buffer)
       }
-      return signal(err)
+      return signal(err, valueBuf.buffer)
     })
   }
 
@@ -490,7 +500,7 @@ class Fuse extends Nanoresource {
           let size = 0
           for (const name of list) size += Buffer.byteLength(name) + 1
           size += 128 // fuse yells if we do not signal room for some mac stuff also
-          return signal(size)
+          return signal(size, listBuf.buffer)
         }
 
         let ptr = 0
@@ -500,9 +510,9 @@ class Fuse extends Nanoresource {
           listBuf[ptr++] = 0
         }
 
-        return signal(ptr)
+        return signal(ptr, listBuf.buffer)
       }
-      return signal(err)
+      return signal(err, listBuf.buffer)
     })
   }
 

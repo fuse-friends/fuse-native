@@ -11,7 +11,18 @@
     "sources": [
       "fuse-native.c"
     ],
-    "cflags": ["-rdynamic"]
+    'xcode_settings': {
+      'OTHER_CFLAGS': [
+        '-g',
+        '-O3',
+        '-Wall'
+      ]
+    },
+    'cflags': [
+      '-g',
+      '-O3',
+      '-Wall'
+    ],
   }, {
     "target_name": "postinstall",
     "type": "none",
