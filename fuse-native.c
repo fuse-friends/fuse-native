@@ -183,10 +183,6 @@ static fuse_thread_locals_t* get_thread_locals();
 // Helpers
 // TODO: Extract into a separate file.
 
-static void fin (napi_env env, void *fin_data, void* fin_hint) {
-  // noop
-}
-
 static uint64_t uint32s_to_uint64 (uint32_t **ints) {
   uint64_t low = *((*ints)++);
   uint64_t high = *((*ints)++);
@@ -379,7 +375,7 @@ FUSE_METHOD(read, 6, 1, (const char *path, char *buf, size_t len, off_t offset, 
 }, {
   napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
   napi_create_uint32(env, l->info->fh, &(argv[3]));
-  napi_create_external_buffer(env, l->len, (char *) l->buf, &fin, NULL, &(argv[4]));
+  napi_create_external_buffer(env, l->len, (char *) l->buf, NULL, NULL, &(argv[4]));
   napi_create_uint32(env, l->len, &(argv[5]));
   FUSE_UINT64_TO_INTS_ARGV(l->offset, 6)
 }, {
@@ -395,7 +391,7 @@ FUSE_METHOD(write, 6, 1, (const char *path, const char *buf, size_t len, off_t o
 }, {
   napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
   napi_create_uint32(env, l->info->fh, &(argv[3]));
-  napi_create_external_buffer(env, l->len, (char *) l->buf, &fin, NULL, &(argv[4]));
+  napi_create_external_buffer(env, l->len, (char *) l->buf, NULL, NULL, &(argv[4]));
   napi_create_uint32(env, l->len, &(argv[5]));
   FUSE_UINT64_TO_INTS_ARGV(l->offset, 6)
 }, {
@@ -459,7 +455,7 @@ FUSE_METHOD_VOID(setxattr, 5, 0, (const char *path, const char *name, const char
 }, {
   napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
   napi_create_string_utf8(env, l->name, NAPI_AUTO_LENGTH, &(argv[3]));
-  napi_create_external_buffer(env, l->size, (char *) l->value, &fin, NULL, &(argv[4]));
+  napi_create_external_buffer(env, l->size, (char *) l->value, NULL, NULL, &(argv[4]));
   napi_create_uint32(env, l->position, &(argv[5]));
   napi_create_uint32(env, l->flags, &(argv[6]));
 })
@@ -473,7 +469,7 @@ FUSE_METHOD_VOID(getxattr, 4, 0, (const char *path, const char *name, char *valu
 }, {
   napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
   napi_create_string_utf8(env, l->name, NAPI_AUTO_LENGTH, &(argv[3]));
-  napi_create_external_buffer(env, l->size, (char *) l->value, &fin, NULL, &(argv[4]));
+  napi_create_external_buffer(env, l->size, (char *) l->value, NULL, NULL, &(argv[4]));
   napi_create_uint32(env, l->position, &(argv[5]));
 })
 
@@ -488,7 +484,7 @@ FUSE_METHOD_VOID(setxattr, 5, 0, (const char *path, const char *name, const char
 }, {
   napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
   napi_create_string_utf8(env, l->name, NAPI_AUTO_LENGTH, &(argv[3]));
-  napi_create_external_buffer(env, l->size, (char *) l->value, &fin, NULL, &(argv[4]));
+  napi_create_external_buffer(env, l->size, (char *) l->value, NULL, NULL, &(argv[4]));
   napi_create_uint32(env, 0, &(argv[5])); // normalize apis between mac and linux
   napi_create_uint32(env, l->flags, &(argv[6]));
 })
@@ -501,7 +497,7 @@ FUSE_METHOD_VOID(getxattr, 4, 0, (const char *path, const char *name, char *valu
 }, {
   napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
   napi_create_string_utf8(env, l->name, NAPI_AUTO_LENGTH, &(argv[3]));
-  napi_create_external_buffer(env, l->size, (char *) l->value, &fin, NULL, &(argv[4]));
+  napi_create_external_buffer(env, l->size, (char *) l->value, NULL, NULL, &(argv[4]));
   napi_create_uint32(env, 0, &(argv[5]));
 })
 
@@ -513,7 +509,7 @@ FUSE_METHOD_VOID(listxattr, 2, 0, (const char *path, char *list, size_t size), {
   l->size = size;
 }, {
   napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
-  napi_create_external_buffer(env, l->size, l->list, &fin, NULL, &(argv[3]));
+  napi_create_external_buffer(env, l->size, l->list, NULL, NULL, &(argv[3]));
 })
 
 FUSE_METHOD_VOID(removexattr, 2, 0, (const char *path, const char *name), {
