@@ -18,6 +18,10 @@
 #include <sys/wait.h>
 #include <pthread.h>
 
+static int IS_ARRAY_BUFFER_DETACH_SUPPORTED = 0;
+
+napi_status napi_detach_arraybuffer(napi_env env, napi_value buf);
+
 #define FUSE_NATIVE_CALLBACK(fn, blk)\
   napi_env env = ft->env;\
   napi_handle_scope scope;\
@@ -370,7 +374,6 @@ FUSE_METHOD(read, 6, 2, (const char *path, char *buf, size_t len, off_t offset, 
   l->path = path;
   l->buf = buf;
   l->len = len;
-  printf("making a buffer %zu %zu\n", buf, len);
   l->offset = offset;
   l->info = info;
 }, {
@@ -380,10 +383,10 @@ FUSE_METHOD(read, 6, 2, (const char *path, char *buf, size_t len, off_t offset, 
   napi_create_uint32(env, l->len, &(argv[5]));
   FUSE_UINT64_TO_INTS_ARGV(l->offset, 6)
 }, {
-  assert(napi_detach_arraybuffer(env, argv[3]) == napi_ok);
+  if (IS_ARRAY_BUFFER_DETACH_SUPPORTED == 1) assert(napi_detach_arraybuffer(env, argv[3]) == napi_ok);
 })
 
-FUSE_METHOD(write, 6, 1, (const char *path, const char *buf, size_t len, off_t offset, struct fuse_file_info *info), {
+FUSE_METHOD(write, 6, 2, (const char *path, const char *buf, size_t len, off_t offset, struct fuse_file_info *info), {
   l->path = path;
   l->buf = buf;
   l->len = len;
@@ -396,7 +399,7 @@ FUSE_METHOD(write, 6, 1, (const char *path, const char *buf, size_t len, off_t o
   napi_create_uint32(env, l->len, &(argv[5]));
   FUSE_UINT64_TO_INTS_ARGV(l->offset, 6)
 }, {
-  // TODO: handle bytes processed?
+  if (IS_ARRAY_BUFFER_DETACH_SUPPORTED == 1) assert(napi_detach_arraybuffer(env, argv[3]) == napi_ok);
 })
 
 FUSE_METHOD(readdir, 1, 2, (const char *path, void *buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *info), {
@@ -446,7 +449,7 @@ FUSE_METHOD(readdir, 1, 2, (const char *path, void *buf, fuse_fill_dir_t filler,
 
 #ifdef __APPLE__
 
-FUSE_METHOD_VOID(setxattr, 5, 0, (const char *path, const char *name, const char *value, size_t size, int flags, uint32_t position), {
+FUSE_METHOD(setxattr, 5, 1, (const char *path, const char *name, const char *value, size_t size, int flags, uint32_t position), {
   l->path = path;
   l->name = name;
   l->value = value;
@@ -459,9 +462,11 @@ FUSE_METHOD_VOID(setxattr, 5, 0, (const char *path, const char *name, const char
   napi_create_external_buffer(env, l->size, (char *) l->value, NULL, NULL, &(argv[4]));
   napi_create_uint32(env, l->position, &(argv[5]));
   napi_create_uint32(env, l->flags, &(argv[6]));
+}, {
+  if (IS_ARRAY_BUFFER_DETACH_SUPPORTED == 1) assert(napi_detach_arraybuffer(env, argv[2]) == napi_ok);
 })
 
-FUSE_METHOD_VOID(getxattr, 4, 0, (const char *path, const char *name, char *value, size_t size, uint32_t position), {
+FUSE_METHOD(getxattr, 4, 1, (const char *path, const char *name, char *value, size_t size, uint32_t position), {
   l->path = path;
   l->name = name;
   l->value = value;
@@ -472,11 +477,13 @@ FUSE_METHOD_VOID(getxattr, 4, 0, (const char *path, const char *name, char *valu
   napi_create_string_utf8(env, l->name, NAPI_AUTO_LENGTH, &(argv[3]));
   napi_create_external_buffer(env, l->size, (char *) l->value, NULL, NULL, &(argv[4]));
   napi_create_uint32(env, l->position, &(argv[5]));
+}, {
+  if (IS_ARRAY_BUFFER_DETACH_SUPPORTED == 1) assert(napi_detach_arraybuffer(env, argv[2]) == napi_ok);
 })
 
 #else
 
-FUSE_METHOD_VOID(setxattr, 5, 0, (const char *path, const char *name, const char *value, size_t size, int flags), {
+FUSE_METHOD(setxattr, 5, 1, (const char *path, const char *name, const char *value, size_t size, int flags), {
   l->path = path;
   l->name = name;
   l->value = value;
@@ -488,9 +495,11 @@ FUSE_METHOD_VOID(setxattr, 5, 0, (const char *path, const char *name, const char
   napi_create_external_buffer(env, l->size, (char *) l->value, NULL, NULL, &(argv[4]));
   napi_create_uint32(env, 0, &(argv[5])); // normalize apis between mac and linux
   napi_create_uint32(env, l->flags, &(argv[6]));
+}, {
+  if (IS_ARRAY_BUFFER_DETACH_SUPPORTED == 1) assert(napi_detach_arraybuffer(env, argv[2]) == napi_ok);
 })
 
-FUSE_METHOD_VOID(getxattr, 4, 0, (const char *path, const char *name, char *value, size_t size), {
+FUSE_METHOD(getxattr, 4, 1, (const char *path, const char *name, char *value, size_t size), {
   l->path = path;
   l->name = name;
   l->value = value;
@@ -500,17 +509,21 @@ FUSE_METHOD_VOID(getxattr, 4, 0, (const char *path, const char *name, char *valu
   napi_create_string_utf8(env, l->name, NAPI_AUTO_LENGTH, &(argv[3]));
   napi_create_external_buffer(env, l->size, (char *) l->value, NULL, NULL, &(argv[4]));
   napi_create_uint32(env, 0, &(argv[5]));
+}, {
+  if (IS_ARRAY_BUFFER_DETACH_SUPPORTED == 1) assert(napi_detach_arraybuffer(env, argv[2]) == napi_ok);
 })
 
 #endif
 
-FUSE_METHOD_VOID(listxattr, 2, 0, (const char *path, char *list, size_t size), {
+FUSE_METHOD(listxattr, 2, 1, (const char *path, char *list, size_t size), {
   l->path = path;
   l->list = list;
   l->size = size;
 }, {
   napi_create_string_utf8(env, l->path, NAPI_AUTO_LENGTH, &(argv[2]));
   napi_create_external_buffer(env, l->size, l->list, NULL, NULL, &(argv[3]));
+}, {
+  if (IS_ARRAY_BUFFER_DETACH_SUPPORTED == 1) assert(napi_detach_arraybuffer(env, argv[2]) == napi_ok);
 })
 
 FUSE_METHOD_VOID(removexattr, 2, 0, (const char *path, const char *name), {
@@ -889,6 +902,13 @@ NAPI_METHOD(fuse_native_unmount) {
 }
 
 NAPI_INIT() {
+  const napi_node_version* version;
+  assert(napi_get_node_version(env, &version) == napi_ok);
+
+  if (version->major > 12 || (version->major == 12 && version->minor >= 16)) {
+    IS_ARRAY_BUFFER_DETACH_SUPPORTED = 1;
+  }
+
   pthread_key_create(&(thread_locals_key), NULL); // TODO: add destructor
 
   NAPI_EXPORT_SIZEOF(fuse_thread_t)

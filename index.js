@@ -464,7 +464,7 @@ class Fuse extends Nanoresource {
 
   _op_write (signal, path, fd, buf, len, offsetLow, offsetHigh) {
     this.ops.write(path, fd, buf, len, getDoubleArg(offsetLow, offsetHigh), (err, bytesWritten) => {
-      return signal(err, bytesWritten)
+      return signal(err, bytesWritten, buf.buffer)
     })
   }
 
@@ -478,7 +478,7 @@ class Fuse extends Nanoresource {
 
   _op_setxattr (signal, path, name, value, position, flags) {
     this.ops.setxattr(path, name, value, position, flags, err => {
-      return signal(err)
+      return signal(err, value.buffer)
     })
   }
 
@@ -487,9 +487,9 @@ class Fuse extends Nanoresource {
       if (!err) {
         if (!value) return signal(IS_OSX ? -93 : -61)
         value.copy(valueBuf)
-        return signal(value.length)
+        return signal(value.length, valueBuf.buffer)
       }
-      return signal(err)
+      return signal(err, valueBuf.buffer)
     })
   }
 
@@ -500,7 +500,7 @@ class Fuse extends Nanoresource {
           let size = 0
           for (const name of list) size += Buffer.byteLength(name) + 1
           size += 128 // fuse yells if we do not signal room for some mac stuff also
-          return signal(size)
+          return signal(size, listBuf.buffer)
         }
 
         let ptr = 0
@@ -510,9 +510,9 @@ class Fuse extends Nanoresource {
           listBuf[ptr++] = 0
         }
 
-        return signal(ptr)
+        return signal(ptr, listBuf.buffer)
       }
-      return signal(err)
+      return signal(err, listBuf.buffer)
     })
   }
 
