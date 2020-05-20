@@ -485,7 +485,7 @@ class Fuse extends Nanoresource {
   _op_getxattr (signal, path, name, valueBuf, position) {
     this.ops.getxattr(path, name, position, (err, value) => {
       if (!err) {
-        if (!value) return signal(IS_OSX ? -93 : -61)
+        if (!value) return signal(IS_OSX ? -93 : -61, valueBuf.buffer)
         value.copy(valueBuf)
         return signal(value.length, valueBuf.buffer)
       }
