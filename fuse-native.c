@@ -370,6 +370,7 @@ FUSE_METHOD(read, 6, 1, (const char *path, char *buf, size_t len, off_t offset, 
   l->path = path;
   l->buf = buf;
   l->len = len;
+  printf("making a buffer %zu %zu\n", buf, len);
   l->offset = offset;
   l->info = info;
 }, {
