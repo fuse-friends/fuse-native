@@ -380,7 +380,7 @@ FUSE_METHOD(read, 6, 2, (const char *path, char *buf, size_t len, off_t offset, 
   napi_create_uint32(env, l->len, &(argv[5]));
   FUSE_UINT64_TO_INTS_ARGV(l->offset, 6)
 }, {
-  napi_detach_arraybuffer(env, argv[3]);
+  assert(napi_detach_arraybuffer(env, argv[3]) == napi_ok);
 })
 
 FUSE_METHOD(write, 6, 1, (const char *path, const char *buf, size_t len, off_t offset, struct fuse_file_info *info), {

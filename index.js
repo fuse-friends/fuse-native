@@ -458,7 +458,7 @@ class Fuse extends Nanoresource {
 
   _op_read (signal, path, fd, buf, len, offsetLow, offsetHigh) {
     this.ops.read(path, fd, buf, len, getDoubleArg(offsetLow, offsetHigh), (err, bytesRead) => {
-      return signal(err, bytesRead, buf)
+      return signal(err, bytesRead, buf.buffer)
     })
   }
 
