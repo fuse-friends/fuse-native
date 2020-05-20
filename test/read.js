@@ -17,7 +17,7 @@ tape('read', function (t) {
       t.same(fd, 42, 'fd was passed to release')
     }
   })
-  const fuse = new Fuse(mnt, testFS, { debug: false })
+  const fuse = new Fuse(mnt, testFS, { debug: true })
   fuse.mount(function (err) {
     t.error(err, 'no error')
 
