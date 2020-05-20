@@ -35,3 +35,6 @@ before_deploy:
 - if [[ "$TRAVIS_OS_NAME" == "windows" ]]; then PREBUILD_ARCH=ia32 npm run prebuild; fi
 - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then PREBUILD_ARCH=ia32 npm run prebuild; fi
 - cd prebuilds && tar cvf "../$ARCHIVE_NAME" . && cd ..
+
+cache:
+  npm: false
