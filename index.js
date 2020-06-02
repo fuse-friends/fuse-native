@@ -230,7 +230,8 @@ class Fuse extends Nanoresource {
 
       return function (nativeHandler, opCode, ...args) {
         const sig = signal.bind(null, nativeHandler)
-        const boundSignal = to ? autoTimeout(sig) : sig
+        const input = [...args]
+        const boundSignal = to ? autoTimeout(sig, input) : sig
         const funcName = `_op_${name}`
         if (!self[funcName] || !self._implemented.has(op)) return boundSignal(-1, ...defaults)
         return self[funcName].apply(self, [boundSignal, ...args])
@@ -247,16 +248,32 @@ class Fuse extends Nanoresource {
         return process.nextTick(nativeSignal, ...arr)
       }
 
-      function autoTimeout (cb) {
+      function autoTimeout (cb, input) {
         let called = false
         const timeout = setTimeout(timeoutWrap, to, TIMEOUT_ERRNO)
         return timeoutWrap
 
-        function timeoutWrap (...args) {
+        function timeoutWrap (err, ...args) {
           if (called) return
           called = true
+
           clearTimeout(timeout)
-          cb(...args)
+
+          if (err === TIMEOUT_ERRNO) {
+            switch (op) {
+              case 'write':
+              case 'read':
+                return cb(TIMEOUT_ERRNO, 0, input[2])
+              case 'setxattr':
+                return cb(TIMEOUT_ERRNO, input[2])
+              case 'getxattr':
+                return cb(TIMEOUT_ERRNO, input[2])
+              case 'listxattr':
+                return cb(TIMEOUT_ERRNO, input[1])
+            }
+          }
+
+          cb(err, ...args)
         }
       }
     }
