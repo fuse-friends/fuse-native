@@ -260,7 +260,7 @@ class Fuse extends Nanoresource {
           clearTimeout(timeout)
 
           if (err === TIMEOUT_ERRNO) {
-            switch (op) {
+            switch (name) {
               case 'write':
               case 'read':
                 return cb(TIMEOUT_ERRNO, 0, input[2])
