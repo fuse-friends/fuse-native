@@ -263,13 +263,13 @@ class Fuse extends Nanoresource {
             switch (name) {
               case 'write':
               case 'read':
-                return cb(TIMEOUT_ERRNO, 0, input[2])
+                return cb(TIMEOUT_ERRNO, 0, input[2].buffer)
               case 'setxattr':
-                return cb(TIMEOUT_ERRNO, input[2])
+                return cb(TIMEOUT_ERRNO, input[2].buffer)
               case 'getxattr':
-                return cb(TIMEOUT_ERRNO, input[2])
+                return cb(TIMEOUT_ERRNO, input[2].buffer)
               case 'listxattr':
-                return cb(TIMEOUT_ERRNO, input[1])
+                return cb(TIMEOUT_ERRNO, input[1].buffer)
             }
           }
 
