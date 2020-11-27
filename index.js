@@ -771,6 +771,15 @@ Fuse.EDQUOT = -122
 Fuse.ENOMEDIUM = -123
 Fuse.EMEDIUMTYPE = -124
 
+// Mode type constants (from sys/stat.h)
+Fuse.S_IFMT = 61440
+Fuse.S_IFBLK = 24567
+Fuse.S_IFCHR = 8192
+Fuse.S_IFIFO = 4096
+Fuse.S_IFREG = 32768
+Fuse.S_IFDIR = 16384
+Fuse.S_IFLNK = 40960
+
 // Forward configuration functions through the exported class.
 Fuse.beforeMount = beforeMount
 Fuse.beforeUnmount = beforeUnmount
