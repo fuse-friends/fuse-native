@@ -192,6 +192,7 @@ class Fuse extends Nanoresource {
     if (this.opts.noforget) options.push('noforget')
     if (this.opts.remember) options.push('remember=' + this.opts.remember)
     if (this.opts.modules) options.push('modules=' + this.opts.modules)
+    if (this.opts.useIno) options.push('use_ino')
 
     if (this.opts.displayFolder && IS_OSX) { // only works on osx
       options.push('volname=' + path.basename(this.opts.name || this.mnt))
